@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# dependencies / caches
+node_modules/
+__pycache__/
+*.pyc
+
+# third-party research clones (kept locally, not part of the deliverable)
+/research/awesome/
+/research/jarvis/
+/research/lxl-commander/
+/research/stardeck/
+/research/super-kanban/
+
+# generated validation page (rebuild from docs/ARCHITECTURE.md)
+/tools/mermaid-check.html

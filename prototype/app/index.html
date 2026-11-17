@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH 指挥官 · 内嵌形态</title>
+<meta name="description" content="DSH 指挥官：跑在 DeepSeek Harness 里的调度器，一条指令变成一个可追溯的任务。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+      <path d="M12 3.4 13.9 10.1 20.6 12 13.9 13.9 12 20.6 10.1 13.9 3.4 12 10.1 10.1Z"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="11" cy="11" r="6.2"/><path d="M15.6 15.6 20.4 20.4"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <path d="M12 5.5v13M5.5 12h13"/>
+    </symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5.5" cy="12" r="1.35"/><circle cx="12" cy="12" r="1.35"/><circle cx="18.5" cy="12" r="1.35"/>
+    </symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+    </symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.8 9.2 12 15.4l6.2-6.2"/>
+    </symbol>
+    <symbol id="i-chev-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.4 5.8 15.6 12l-6.2 6.2"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6.6 9.5 17.1 4 11.6"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.6 5 6.3v5.5c0 4.6 3.6 6.8 7 8.6 3.4-1.8 7-4 7-8.6V6.3z"/><path d="M9.4 12l1.9 1.9 3.4-3.7"/>
+    </symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.5 7.5 9.5 12l-5 4.5M13 17h6.5"/>
+    </symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13 3.6H8a2 2 0 0 0-2 2v12.8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8.6z"/><path d="M13 3.6v5h5"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8"/><path d="M12 7.6v4.6l3 1.8"/>
+    </symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.8 3.6 8.2l8.4 4.4 8.4-4.4z"/><path d="M3.6 12.6 12 17l8.4-4.4M3.6 16.6 12 21l8.4-4.4"/>
+    </symbol>
+    <symbol id="i-board" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/>
+    </symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 13h4.5l1.7 3h5.6l1.7-3H21"/><path d="M5.6 5h12.8l2.6 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 8h8M16 8h4M4 16h3M11 16h9"/><circle cx="14" cy="8" r="2"/><circle cx="9" cy="16" r="2"/>
+    </symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 9.2a6 6 0 1 0-12 0c0 6.2-2.5 7.2-2.5 7.2h17S18 15.4 18 9.2z"/><path d="M10.4 19.8a2 2 0 0 0 3.2 0"/>
+    </symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 6.5 9H3.5v6h3L11 19z"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>
+    </symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14.4V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.6"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 11.5a8 8 0 1 0-2.7 6.7"/><path d="M20 5.5v6h-6"/>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <path d="M5 6.5v11M12 6.5v11M19 6.5v11"/><circle cx="5" cy="14" r="2"/><circle cx="12" cy="9.5" r="2"/><circle cx="19" cy="12.5" r="2"/>
+    </symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 7.2a2 2 0 0 1 2-2h3.9l2 2.4h7.1a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4.2 3.4 19.4h17.2z"/><path d="M12 9.6v4.2M12 16.9v.4"/>
+    </symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 19.4V5M6 10.8 12 4.9l6 5.9"/>
+    </symbol>
+    <symbol id="i-at" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3.8"/><path d="M15.8 12v1.4a2.6 2.6 0 0 0 5.2 0V12a9 9 0 1 0-3.6 7.2"/>
+    </symbol>
+    <symbol id="i-slash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <path d="M14.6 4 9.4 20"/>
+    </symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3.6V7M14 3.6V7M10 17v3.4M14 17v3.4M3.6 10H7M3.6 14H7M17 10h3.4M17 14h3.4"/>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M18.5 5.5l-1.4 1.4M6.9 17.1l-1.4 1.4"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 13.6A8 8 0 1 1 10.4 4a6.4 6.4 0 0 0 9.6 9.6z"/>
+    </symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3.2" y="4.6" width="17.6" height="11.6" rx="2"/><path d="M9 20h6M12 16.2V20"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l1 12.2a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8L17.5 7M10 11v6M14 11v6"/>
+    </symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5"/>
+    </symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13.4 3 6 13.4h4.8L9.8 21l7.6-10.6h-5z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="chrome">
+  <div class="chrome__left">
+    <span class="chrome__mark"><svg class="od-icon" style="--od-icon-size:15px" aria-hidden="true"><use href="#i-mark"/></svg></span>
+    <span class="chrome__title">DSH 指挥官</span>
+  </div>
+
+  <nav class="segments" aria-label="屏幕切换">
+    <button class="seg is-active" type="button" data-scene="workbench" aria-current="page">工作台</button>
+    <button class="seg" type="button" data-scene="panel">指挥面板</button>
+    <button class="seg" type="button" data-scene="board">看板</button>
+    <button class="seg" type="button" data-scene="detail">任务详情</button>
+    <button class="seg" type="button" data-scene="settings">设置</button>
+    <button class="seg" type="button" data-scene="spec">组件</button>
+  </nav>
+
+  <div class="theme" role="group" aria-label="主题">
+    <button class="theme__btn" type="button" data-theme-choice="light" aria-label="浅色" title="浅色">
+      <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-sun"/></svg>
+    </button>
+    <button class="theme__btn is-active" type="button" data-theme-choice="dark" aria-label="深色" title="深色">
+      <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+    <button class="theme__btn" type="button" data-theme-choice="system" aria-label="跟随系统" title="跟随系统">
+      <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-monitor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="stage-wrap">
+  <div class="stage" id="stage">
+
+    <!-- ============================ S1 工作台 ============================ -->
+    <section class="scene" id="scene-workbench" aria-label="工作台">
+      <div class="dsh">
+        <aside class="dsh-side">
+          <div class="dsh-brand">
+            <span class="dsh-brand__mark">
+              <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-cpu"/></svg>
+            </span>
+            <span class="dsh-brand__text">
+              <strong>DeepSeek Harness</strong>
+              <span>本地工作区</span>
+            </span>
+          </div>
+
+          <div class="side-search">
+            <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-search"/></svg>
+            <span>搜索会话</span>
+            <kbd class="kbd">⌘K</kbd>
+          </div>
+
+          <nav class="ws-list" aria-label="工作区与会话">
+            <div class="ws-block">
+              <div class="ws-block__head">
+                <span class="ws ws--htdot">H</span><strong>HtDot</strong>
+                <button class="icon-btn" type="button" aria-label="在 HtDot 新建会话"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-plus"/></svg></button>
+              </div>
+              <button class="sess is-active" type="button">订单导出 · 流式改造<time>17:21</time></button>
+              <button class="sess" type="button">结算页性能优化<time>16:47</time></button>
+              <button class="sess" type="button">支付回调重试<time>昨天</time></button>
+            </div>
+
+            <div class="ws-block">
+              <div class="ws-block__head">
+                <span class="ws ws--mira">M</span><strong>Mira</strong>
+                <button class="icon-btn" type="button" aria-label="在 Mira 新建会话"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-plus"/></svg></button>
+              </div>
+              <button class="sess" type="button">知识库 RAG 重排<time>16:58</time></button>
+              <button class="sess" type="button">文档站迁移<time>16:31</time></button>
+            </div>
+
+            <div class="ws-block">
+              <div class="ws-block__head">
+                <span class="ws ws--live">L</span><strong>Live</strong>
+                <button class="icon-btn" type="button" aria-label="在 Live 新建会话"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-plus"/></svg></button>
+              </div>
+              <button class="sess" type="button">中台埋点补齐<time>17:09</time></button>
+              <button class="sess" type="button">场次回放链接<time>14:02</time></button>
+            </div>
+          </nav>
+
+          <div class="side-foot">
+            <span class="avatar">Z</span>
+            <span class="side-foot__name">本地账户</span>
+            <button class="icon-btn" type="button" aria-label="DSH 设置" data-toast="DSH 设置由宿主提供，指挥官只读取会话状态">
+              <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-settings"/></svg>
+            </button>
+          </div>
+        </aside>
+
+        <div class="dsh-main">
+          <header class="conv-head">
+            <span class="ws ws--htdot">H</span>
+            <strong class="conv-head__title">订单导出 · 流式改造</strong>
+            <span class="pill pill--soft"><i></i>已交付</span>
+            <span class="conv-head__spacer"></span>
+            <span class="chip mono"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-cpu"/></svg>deepseek-v4</span>
+            <span class="chip">high</span>
+            <button class="icon-btn" type="button" aria-label="更多会话操作" data-toast="会话操作：导出、复制链接、归档">
+              <svg class="od-icon" style="--od-icon-size:15px" aria-hidden="true"><use href="#i-more"/></svg>
+            </button>
+          </header>
+
+          <div class="conv-body">
+            <div class="conv-col">
+              <div class="turn turn--user">
+                <p class="bubble bubble--user">导出改成流式，顺便补上单测。</p>
+              </div>
+
+              <div class="turn turn--agent">
+                <span class="turn__avatar"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-cpu"/></svg></span>
+                <div class="turn__main">
+                  <p class="turn__text">好。先改 <span class="mono">src/export.ts</span> 的写出逻辑，再补 <span class="mono">tests/export.spec.ts</span>，最后跑 1 万行基准和内存。</p>
+
+                  <div class="tool-block">
+                    <button class="tool-block__head" type="button" aria-expanded="false" data-tool-toggle>
+                      <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-terminal"/></svg>
+                      <span class="mono tool-block__cmd">pnpm vitest run tests/export.spec.ts</span>
+                      <span class="tool-block__meta">14 passed · 2.1s</span>
+                      <svg class="od-icon tool-block__chev" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-chev-down"/></svg>
+                    </button>
+                    <pre class="tool-block__body mono" hidden>✓ tests/export.spec.ts (14)
+  ✓ streamExport / 1k rows 412ms
+  ✓ streamExport / 1w rows 2.1s
+  ✓ memory peak &lt; 300MB
+Test Files  1 passed (1)
+Tests      14 passed (14)</pre>
+                  </div>
+
+                  <p class="turn__text">都通过了：vitest 14 项全绿，1 万行 6.42s，内存峰值 214MB。3 个文件已交付。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="conv-input">
+            <div class="conv-col">
+              <div class="conv-field">
+                <label class="sr-only" for="dsh-composer">给 HtDot 发消息</label>
+                <textarea id="dsh-composer" rows="2" placeholder="给 HtDot 发消息…"></textarea>
+                <div class="conv-field__bar">
+                  <span class="chip"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-at"/></svg>文件</span>
+                  <span class="chip">deepseek-v4</span>
+                  <button class="send-btn" type="button" aria-label="发送" data-toast="这是工作会话的输入框，演示中不发送">
+                    <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-arrow-up"/></svg>
+                  </button>
+                </div>
+              </div>
+              <p class="conv-hint">工作会话由 DSH 执行。指挥官只读取任务状态，不进入这段上下文。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="orb-states" aria-label="悬浮球状态">
+        <p class="orb-states__title">悬浮球状态</p>
+        <div class="orb-states__row">
+          <div class="orb-mini orb-mini--idle"><span class="orb-mini__dot"></span><span>待机</span></div>
+          <div class="orb-mini orb-mini--think"><span class="orb-mini__dot orb-mini__dot--ring"></span><span>思考</span></div>
+          <div class="orb-mini orb-mini--attn"><span class="orb-mini__dot orb-mini__dot--warn"></span><span>需要你</span></div>
+          <div class="orb-mini orb-mini--done"><span class="orb-mini__dot orb-mini__dot--ok"></span><span>完成</span></div>
+        </div>
+        <p class="orb-states__note">平时收起，只有需要你时才浮出并播报</p>
+      </aside>
+
+      <div class="notice-stack">
+        <div class="approval" id="wb-approval">
+          <div class="approval__head">
+            <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-shield"/></svg>
+            <span>工作会话审批</span>
+            <span class="pill pill--warning"><i></i>等待你</span>
+          </div>
+          <p class="approval__title">HtDot 需要你允许运行测试</p>
+          <div class="cmd"><span class="cmd__dim">$</span> bash ~/Documents/GitHub/HtDot<br><span class="cmd__dim">$</span> pnpm vitest run tests/export.spec.ts</div>
+          <div class="approval__acts">
+            <button class="btn btn--sm" type="button" data-approve="deny">拒绝</button>
+            <button class="btn btn--sm" type="button" data-approve="always">总是允许</button>
+            <button class="btn btn--sm btn--primary" type="button" data-approve="allow">允许</button>
+          </div>
+          <div class="approval__foot">
+            <p class="approval__note">工作会话审批 · 仅界面处理，不进指挥官</p>
+            <button class="link-btn approval__open" type="button" data-toast="已打开 HtDot · 订单导出 · 流式改造">打开会话
+              <svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-external"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="broadcast" role="status">
+          <div class="broadcast__head">
+            <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-check"/></svg>
+            <span>指挥官播报</span>
+          </div>
+          <p class="broadcast__title">订单导出 已改完 · 2 项验收等你</p>
+          <div class="broadcast__foot">
+            <time datetime="2026-11-16T17:19">2 分钟前</time>
+            <button class="btn btn--sm btn--ghost" type="button" data-scene-jump="detail">查看</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="orb-dock">
+        <button class="orb" type="button" data-scene-jump="panel" aria-label="唤起指挥官，2 条待处理">
+          <span class="orb__badge">2</span>
+        </button>
+        <span class="hint-key"><span class="kbd">⌃</span><span class="kbd">⌥</span><span class="kbd">C</span> 唤起</span>
+      </div>
+    </section>
+
+    <!-- ============================ S2 指挥面板 ============================ -->
+    <section class="scene" id="scene-panel" hidden aria-label="指挥面板">
+      <div class="dsh dsh--ghost" aria-hidden="true">
+        <aside class="dsh-side">
+          <div class="dsh-brand">
+            <span class="dsh-brand__mark"><svg class="od-icon" style="--od-icon-size:14px"><use href="#i-cpu"/></svg></span>
+            <span class="dsh-brand__text"><strong>DeepSeek Harness</strong><span>本地工作区</span></span>
+          </div>
+          <div class="side-search"><svg class="od-icon" style="--od-icon-size:13px"><use href="#i-search"/></svg><span>搜索会话</span><kbd class="kbd">⌘K</kbd></div>
+          <nav class="ws-list">
+            <div class="ws-block">
+              <div class="ws-block__head"><span class="ws ws--htdot">H</span><strong>HtDot</strong></div>
+              <button class="sess is-active" type="button">订单导出 · 流式改造<time>17:21</time></button>
+              <button class="sess" type="button">结算页性能优化<time>16:47</time></button>
+            </div>
+            <div class="ws-block">
+              <div class="ws-block__head"><span class="ws ws--mira">M</span><strong>Mira</strong></div>
+              <button class="sess" type="button">知识库 RAG 重排<time>16:58</time></button>
+            </div>
+            <div class="ws-block">
+              <div class="ws-block__head"><span class="ws ws--live">L</span><strong>Live</strong></div>
+              <button class="sess" type="button">中台埋点补齐<time>17:09</time></button>
+            </div>
+          </nav>
+        </aside>
+        <div class="dsh-main">
+          <header class="conv-head"><span class="ws ws--htdot">H</span><strong class="conv-head__title">订单导出 · 流式改造</strong><span class="conv-head__spacer"></span><span class="chip mono">deepseek-v4</span></header>
+          <div class="conv-body">
+            <div class="conv-col">
+              <div class="turn turn--user"><p class="bubble bubble--user">导出改成流式，顺便补上单测。</p></div>
+              <div class="turn turn--agent"><span class="turn__avatar"><svg class="od-icon" style="--od-icon-size:13px"><use href="#i-cpu"/></svg></span><div class="turn__main"><p class="turn__text">好。先改 src/export.ts 的写出逻辑，再补 tests/export.spec.ts。</p></div></div>
+            </div>
+          </div>
+          <div class="conv-input"><div class="conv-col"><div class="conv-field"><textarea rows="2" placeholder="给 HtDot 发消息…"></textarea></div></div></div>
+        </div>
+      </div>
+
+      <div class="scrim scrim--panel"></div>
+
+      <div class="panel" role="region" aria-label="指挥官对话">
+        <header class="panel-head">
+          <span class="panel-head__mark">
+            <svg class="od-icon" style="--od-icon-size:16px" aria-hidden="true"><use href="#i-mark"/></svg>
+          </span>
+          <span class="panel-head__name">
+            <strong>指挥官</strong>
+            <span>4 个任务 · DeepSeek-V4 · Jev typesafe</span>
+          </span>
+          <span class="panel-head__acts">
+            <button class="icon-btn" type="button" aria-label="静音播报" data-toast="已静音播报，任务状态仍会记录">
+              <svg class="od-icon" style="--od-icon-size:15px" aria-hidden="true"><use href="#i-mute"/></svg>
+            </button>
+            <button class="icon-btn" type="button" aria-label="打开看板" data-scene-jump="board">
+              <svg class="od-icon" style="--od-icon-size:15px" aria-hidden="true"><use href="#i-board"/></svg>
+            </button>
+            <button class="icon-btn" type="button" aria-label="更多" data-toast="会话设置：模型、工具白名单、导出">
+              <svg class="od-icon" style="--od-icon-size:15px" aria-hidden="true"><use href="#i-more"/></svg>
+            </button>
+          </span>
+        </header>
+
+        <div class="panel-stream" id="panel-stream">
+          <div class="turn turn--user"><p class="bubble bubble--user">把订单导出改成流式，顺便补单测，跑通再告诉我</p></div>
+
+          <div class="turn turn--agent">
+            <span class="turn__avatar"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-mark"/></svg></span>
+            <div class="turn__main"><p class="turn__text">明白。在 HtDot 做吗？"跑通"指 vitest 全绿，还是要附 1 万行耗时对比？</p></div>
+          </div>
+
+          <div class="turn turn--user"><p class="bubble bubble--user">HtDot，全绿就行，顺便看一眼内存</p></div>
+
+          <div class="turn turn--agent">
+            <span class="turn__avatar"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-mark"/></svg></span>
+            <div class="turn__main"><p class="turn__text">好，我先让 Jev 复核派发目标；具体怎么拆分由工作会话负责，验收内容我来整理、你确认。</p></div>
+          </div>
+
+          <div class="dispatch" id="dispatch-card">
+            <div class="dispatch__head">
+              <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-shield"/></svg>
+              <strong>需要你确认派发目标</strong>
+              <span class="pill pill--warning dispatch__state"><i></i>已暂停</span>
+            </div>
+
+            <div class="conf">
+              <div class="conf__top"><span>置信度</span><strong class="conf__num mono">62%</strong></div>
+              <div class="conf__bar" role="img" aria-label="置信度 62%，阈值 80%">
+                <i style="width:62%"></i>
+                <span class="conf__tick" style="left:80%"></span>
+              </div>
+              <div class="conf__scale"><span>0</span><span class="conf__thr">阈值 80%</span><span>100</span></div>
+            </div>
+
+            <p class="dispatch__why">模型建议与 Jev 判断一致，但置信度低于阈值，已暂停派发。</p>
+
+            <div class="options" role="group" aria-label="候选派发目标">
+              <button class="option is-picked" type="button" aria-pressed="true">
+                <span class="ws ws--htdot">H</span>
+                <span class="option__main">
+                  <strong>HtDot · 新会话</strong>
+                  <span class="option__sub">订单导出 · 流式改造 2</span>
+                </span>
+                <span class="option__pct mono">62%</span>
+              </button>
+              <button class="option" type="button" aria-pressed="false">
+                <span class="ws ws--htdot">H</span>
+                <span class="option__main">
+                  <strong>HtDot · 附加到现有会话</strong>
+                  <span class="option__sub">订单导出 · 流式改造</span>
+                </span>
+                <span class="option__pct mono">21%</span>
+              </button>
+              <button class="option" type="button" aria-pressed="false">
+                <span class="ws ws--mira">M</span>
+                <span class="option__main">
+                  <strong>Mira · 新会话</strong>
+                  <span class="option__sub">无相关的历史任务</span>
+                </span>
+                <span class="option__pct mono">17%</span>
+              </button>
+            </div>
+
+            <p class="dispatch__reason"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-layers"/></svg><span>导出链路与 3 个历史任务同在 HtDot；会话上下文已 78%，建议新开。</span></p>
+
+            <p class="dispatch__cap" id="dispatch-cap"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-cpu"/></svg><span>能力</span><b id="dispatch-cap-title">自动选择（能力面板）</b><span class="mono" id="dispatch-cap-names">vitest、export-bench</span></p>
+
+            <div class="custom" id="custom-form" hidden>
+              <div class="custom__row">
+                <label class="custom__label" for="custom-ws">工作区</label>
+                <select class="select custom__select" id="custom-ws">
+                  <option>HtDot（电商后台：订单、结算、导出链路）</option>
+                  <option>Mira（知识库与检索）</option>
+                  <option>Live（直播中台：埋点、抽奖、回放）</option>
+                </select>
+              </div>
+              <div class="custom__row">
+                <label class="custom__label" for="custom-session">会话</label>
+                <select class="select custom__select" id="custom-session">
+                  <option>新建会话</option>
+                  <option>订单导出 · 流式改造（17:21，上下文 78%）</option>
+                  <option>结算页性能优化（16:47）</option>
+                </select>
+              </div>
+              <p class="custom__note">自定义目标会记录为 override，不改变 Jev 的判定结果。</p>
+              <div class="custom__acts">
+                <button class="btn btn--primary btn--block" type="button" id="btn-custom-dispatch">确认派发</button>
+                <button class="link-btn" type="button" id="btn-custom-collapse">收起</button>
+              </div>
+            </div>
+
+            <div class="dispatch__acts" id="dispatch-acts">
+              <button class="btn btn--primary btn--block" type="button" id="btn-adopt">采用建议</button>
+              <button class="btn btn--block" type="button" id="btn-custom">自定义选择</button>
+              <button class="link-btn" type="button" data-toast="已取消派发，任务回到草稿">取消</button>
+            </div>
+
+            <p class="dispatch__foot mono">决策 jev · typesafe/jev-latest · 1.2s · 低置信度必须人工确认</p>
+          </div>
+
+          <div class="auto-strip">
+            <span class="auto-strip__icon"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-zap"/></svg></span>
+            <span class="auto-strip__text">另一个任务已自动派发 · Jev 91% · HtDot 新会话</span>
+            <button class="link-btn" type="button" data-toast="打开自动派发记录：17:12 Jev 91%">查看</button>
+          </div>
+        </div>
+
+        <div class="panel-input">
+          <div class="field">
+            <label class="sr-only" for="commander-composer">交代一件事</label>
+            <textarea id="commander-composer" rows="2" placeholder="交代一件事，或问点什么…"></textarea>
+            <div class="field__bar">
+              <button class="chip" type="button" data-toast="选择工作区：HtDot / Mira / Live">
+                <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-at"/></svg>工作区
+              </button>
+              <button class="chip" type="button" data-toast="命令：派发、查看状态、验收、归档">
+                <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-slash"/></svg>命令
+              </button>
+              <button class="send-btn" type="button" aria-label="发送" data-toast="演示：输入内容只会本地展示">
+                <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-arrow-up"/></svg>
+              </button>
+            </div>
+          </div>
+          <p class="panel-input__hint"><kbd class="kbd">⌘</kbd><kbd class="kbd">↩</kbd> 发送</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ S3 看板 ============================ -->
+    <section class="scene" id="scene-board" hidden aria-label="看板">
+      <div class="board">
+        <header class="board__top">
+          <div class="board__title">
+            <h1>指挥台</h1>
+            <time datetime="2026-11-16">11 月 16 日 周一</time>
+          </div>
+          <div class="filters" role="group" aria-label="按工作区筛选">
+            <button class="filter is-active" type="button" data-filter="all">全部</button>
+            <button class="filter" type="button" data-filter="htdot">HtDot</button>
+            <button class="filter" type="button" data-filter="mira">Mira</button>
+            <button class="filter" type="button" data-filter="live">Live</button>
+          </div>
+          <div class="board__acts">
+            <label class="search">
+              <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-search"/></svg>
+              <input type="search" id="board-search" placeholder="搜索任务" aria-label="搜索任务">
+            </label>
+            <button class="btn btn--primary btn--sm" type="button" data-toast="新建任务：先说要做什么，指挥官负责派发与跟进">
+              <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-plus"/></svg>新建任务
+            </button>
+            <span class="sync"><span class="sync__dot"></span>看板由指挥官自动维护 · 已同步</span>
+          </div>
+        </header>
+
+        <div class="columns" id="board-columns">
+          <section class="col" data-col="confirm" style="--col-color:var(--warning)">
+            <header class="col__head"><span class="dot"></span><h2>待派发确认</h2><span class="n">2</span></header>
+            <div class="col__body">
+              <div class="tcard tcard--confirm" data-ws="htdot" data-open-detail>
+                <button class="tcard__hit" type="button" aria-label="打开任务：订单导出改流式 + 补单测"></button>
+                <span class="tcard__title">订单导出改流式 + 补单测</span>
+                <span class="tcard__tag"><svg class="od-icon" style="--od-icon-size:10px" aria-hidden="true"><use href="#i-shield"/></svg>Jev 62% · 等你确认</span>
+                <span class="tcard__foot"><span class="ws ws--htdot">H</span><time>17:21</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开指挥面板"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+              <div class="tcard tcard--confirm" data-ws="mira" data-toast="Mira · RAG 重排：Jev 74%，等你确认派发目标">
+                <button class="tcard__hit" type="button" aria-label="查看待确认任务：Mira 知识库接入 RAG 重排"></button>
+                <span class="tcard__title">Mira 知识库接入 RAG 重排</span>
+                <span class="tcard__tag">Jev 74% · 等你确认</span>
+                <span class="tcard__foot"><span class="ws ws--mira">M</span><time>16:58</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开指挥面板"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+            </div>
+            <button class="col__more" type="button" data-toast="新建任务：说一句就派">新建</button>
+          </section>
+
+          <section class="col" data-col="run" style="--col-color:var(--info)">
+            <header class="col__head"><span class="dot"></span><h2>进行中</h2><span class="n">3</span></header>
+            <div class="col__body">
+              <div class="tcard tcard--run" data-ws="live" data-toast="Live · 埋点补齐：已跑 12 分钟，42%">
+                <button class="tcard__hit" type="button" aria-label="查看进行中任务：直播中台埋点补齐，42%"></button>
+                <span class="tcard__title">直播中台埋点补齐</span>
+                <span class="progress">
+                  <span class="progress__bar"><i style="width:42%"></i></span>
+                  <span class="progress__meta"><span>42%</span><span>已跑 12 分钟</span></span>
+                </span>
+                <span class="tcard__foot"><span class="ws ws--live">L</span><time>17:09</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开会话"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+              <div class="tcard tcard--run" data-ws="htdot" data-toast="HtDot · 结算页性能优化：18 分钟前有进展">
+                <button class="tcard__hit" type="button" aria-label="查看进行中任务：HtDot 结算页性能优化"></button>
+                <span class="tcard__title">HtDot 结算页性能优化</span>
+                <span class="tcard__note"><b>18 分钟前</b> 有进展 · 首屏 1.9s → 1.2s</span>
+                <span class="tcard__foot"><span class="ws ws--htdot">H</span><time>16:47</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开会话"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+              <div class="tcard tcard--run" data-ws="mira" data-toast="Mira · 文档站迁移：排队中，前面还有 1 个会话">
+                <button class="tcard__hit" type="button" aria-label="查看进行中任务：Mira 文档站迁移"></button>
+                <span class="tcard__title">Mira 文档站迁移</span>
+                <span class="tcard__note">排队中 · 前面还有 1 个会话</span>
+                <span class="tcard__foot"><span class="ws ws--mira">M</span><time>16:31</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开会话"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+            </div>
+            <button class="col__more" type="button" data-toast="新建任务：说一句就派">新建</button>
+          </section>
+
+          <section class="col" data-col="blocked" style="--col-color:var(--danger)">
+            <header class="col__head"><span class="dot"></span><h2>受阻</h2><span class="n">1</span></header>
+            <div class="col__body">
+              <div class="tcard tcard--blocked" data-ws="live" data-toast="Live · 缺少 STAGING_API_KEY，已等待 26 分钟">
+                <button class="tcard__hit" type="button" aria-label="查看受阻任务：缺少 STAGING_API_KEY"></button>
+                <span class="tcard__title">缺少 <span class="mono">STAGING_API_KEY</span></span>
+                <span class="tcard__note">Live 等待 <b>26 分钟</b> · 无法继续</span>
+                <span class="tcard__foot"><span class="ws ws--live">L</span><time>16:55</time><button class="act" type="button" data-toast="改派：把这条任务转给另一个工作区">改派</button></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开会话"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+            </div>
+            <button class="col__more" type="button" data-toast="新建任务：说一句就派">新建</button>
+          </section>
+
+          <section class="col" data-col="accept" style="--col-color:var(--violet)">
+            <header class="col__head"><span class="dot"></span><h2>待验收</h2><span class="n">2</span></header>
+            <div class="col__body">
+              <div class="tcard tcard--accept" data-ws="htdot" data-open-detail>
+                <button class="tcard__hit" type="button" aria-label="查看待验收任务：订单导出改流式"></button>
+                <span class="tcard__title">订单导出改流式</span>
+                <span class="tcard__note">2 交付物 · <b>3 验收</b></span>
+                <span class="tcard__foot"><span class="ws ws--htdot">H</span><time>17:18</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开会话"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+              <div class="tcard tcard--accept" data-ws="mira" data-toast="Mira · 索引重建脚本：3 条验收待看">
+                <button class="tcard__hit" type="button" aria-label="查看待验收任务：Mira 索引重建脚本"></button>
+                <span class="tcard__title">Mira 索引重建脚本</span>
+                <span class="tcard__note">1 交付物 · <b>3 验收</b></span>
+                <span class="tcard__foot"><span class="ws ws--mira">M</span><time>16:12</time></span>
+                <span class="tcard__quick" role="group" aria-label="快捷操作"><button type="button" aria-label="打开会话"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-external"/></svg></button></span>
+              </div>
+            </div>
+            <button class="col__more" type="button" data-toast="新建任务：说一句就派">新建</button>
+          </section>
+
+          <section class="col" data-col="done" style="--col-color:var(--success)">
+            <header class="col__head"><span class="dot"></span><h2>已完成</h2><span class="n">4</span></header>
+            <div class="col__body">
+              <div class="tcard tcard--done" data-ws="htdot" data-toast="HtDot · 支付回调重试：昨天 18:40 通过验收">
+                <button class="tcard__hit" type="button" aria-label="查看已完成任务：HtDot 支付回调重试"></button>
+                <span class="tcard__title">HtDot 支付回调重试</span>
+                <span class="tcard__done-note"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg>昨天 18:40 通过验收</span>
+                <span class="tcard__foot"><span class="ws ws--htdot">H</span><time>昨天</time></span>
+              </div>
+              <div class="tcard tcard--done" data-ws="live" data-toast="Live · 场次回放链接修复：今天 14:02 通过">
+                <button class="tcard__hit" type="button" aria-label="查看已完成任务：Live 场次回放链接修复"></button>
+                <span class="tcard__title">Live 场次回放链接修复</span>
+                <span class="tcard__done-note"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg>今天 14:02 通过</span>
+                <span class="tcard__foot"><span class="ws ws--live">L</span><time>14:02</time></span>
+              </div>
+              <div class="tcard tcard--done" data-ws="mira" data-toast="Mira · 检索缓存 TTL：昨天 16:05 通过">
+                <button class="tcard__hit" type="button" aria-label="查看已完成任务：Mira 检索缓存 TTL"></button>
+                <span class="tcard__title">Mira 检索缓存 TTL</span>
+                <span class="tcard__done-note"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg>昨天 16:05 通过</span>
+                <span class="tcard__foot"><span class="ws ws--mira">M</span><time>16:05</time></span>
+              </div>
+              <div class="tcard tcard--done" data-ws="htdot" data-toast="HtDot · 导出按钮防抖：今天 11:20 通过">
+                <button class="tcard__hit" type="button" aria-label="查看已完成任务：HtDot 导出按钮防抖"></button>
+                <span class="tcard__title">HtDot 导出按钮防抖</span>
+                <span class="tcard__done-note"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg>今天 11:20 通过</span>
+                <span class="tcard__foot"><span class="ws ws--htdot">H</span><time>11:20</time></span>
+              </div>
+            </div>
+            <button class="col__more" type="button" data-toast="新建任务：说一句就派">新建</button>
+          </section>
+        </div>
+
+        <div class="board-toast" role="status">
+          <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-check"/></svg>
+          <span>已把「直播中台埋点补齐」移到进行中 · 已同步给指挥官</span>
+          <time>17:12</time>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ S4 任务详情 ============================ -->
+    <section class="scene" id="scene-detail" hidden aria-label="任务详情">
+      <div class="board board--ghost" aria-hidden="true" inert>
+        <header class="board__top">
+          <div class="board__title"><h1>指挥台</h1><time datetime="2026-11-16">11 月 16 日 周一</time></div>
+          <div class="filters">
+            <button class="filter is-active" type="button" tabindex="-1">全部</button>
+            <button class="filter" type="button" tabindex="-1">HtDot</button>
+            <button class="filter" type="button" tabindex="-1">Mira</button>
+            <button class="filter" type="button" tabindex="-1">Live</button>
+          </div>
+          <div class="board__acts"><span class="sync"><span class="sync__dot"></span>看板由指挥官自动维护 · 已同步</span></div>
+        </header>
+        <div class="columns" id="detail-board-slot"></div>
+      </div>
+
+      <div class="drawer-scrim" id="detail-scrim" hidden></div>
+
+      <aside class="drawer" id="detail-drawer" role="dialog" aria-modal="true" aria-labelledby="dw-title" tabindex="-1" hidden>
+        <header class="dw-head">
+          <div class="dw-head__top">
+            <span class="pill pill--violet" id="dw-status"><i></i>待验收</span>
+            <span class="ws ws--htdot">H</span>
+            <span class="muted">HtDot</span>
+            <button class="icon-btn dw-head__close" type="button" id="btn-close-drawer" aria-label="关闭任务详情">
+              <svg class="od-icon" style="--od-icon-size:15px" aria-hidden="true"><use href="#i-close"/></svg>
+            </button>
+          </div>
+          <h2 id="dw-title">订单导出改流式</h2>
+        </header>
+
+        <div class="dw-body">
+          <section class="dw-sec">
+            <div class="dw-sec__head">
+              <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-layers"/></svg>
+              <h3>概览</h3>
+            </div>
+            <p class="ov-goal">把订单导出改成<b>流式写出</b>并在过程中回传进度，同时补齐导出链路单测；全绿后交付验收。</p>
+            <dl class="ov-grid">
+              <div class="ov-cell"><dt>派发时间</dt><dd>17:03</dd></div>
+              <div class="ov-cell"><dt>耗时</dt><dd>18 分 12 秒</dd></div>
+              <div class="ov-cell"><dt>主会话</dt><dd class="text">订单导出 · 流式改造</dd></div>
+            </dl>
+          </section>
+
+          <section class="dw-sec">
+            <div class="dw-sec__head">
+              <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-shield"/></svg>
+              <h3>决策记录</h3>
+              <span class="n">Jev</span>
+            </div>
+            <button class="decision-row" type="button" data-toast="Jev 明细：3 个候选、耗时 1.2s、阈值 80%">
+              <span class="decision-row__flow">
+                <span>建议 新会话</span>
+                <span class="mono">62%</span>
+                <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-chev-right"/></svg>
+                <span>你选择「采用建议」</span>
+                <span class="mono">17:03</span>
+              </span>
+              <svg class="od-icon decision-row__chev" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>
+            </button>
+            <button class="decision-row" type="button" style="margin-top:6px" data-toast="能力明细：能力面板自动选择 vitest、export-bench；仅本次会话生效">
+              <span class="decision-row__flow">
+                <span>能力</span>
+                <span>自动选择（能力面板）</span>
+                <span class="mono">2 项</span>
+                <span class="mono" style="color:var(--label-3)">vitest、export-bench</span>
+              </span>
+              <svg class="od-icon decision-row__chev" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>
+            </button>
+          </section>
+
+          <section class="dw-sec">
+            <div class="dw-sec__head">
+              <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-check"/></svg>
+              <h3>验收内容</h3>
+              <span class="pill" style="margin-left:6px">指挥官整理</span>
+              <span class="n">3 / 3 证据齐全</span>
+            </div>
+            <p class="dw-sec__note">指挥官不拆分工作、不评估结果；它读取工作会话的产出，整理成验收清单与证据并更新任务板，证据是否达标由你判断，你确认后通过。</p>
+            <div>
+              <div class="check">
+                <span class="check__mark"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg></span>
+                <div>
+                  <p class="check__label">1 万行导出 &lt; 8s <span class="pill pill--success">实测 6.42s</span></p>
+                  <p class="check__evidence"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-terminal"/></svg><span>工作会话 · </span><span class="mono">bench/export-10k.log · avg 6.42s · p95 6.9s</span></p>
+                </div>
+              </div>
+              <div class="check">
+                <span class="check__mark"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg></span>
+                <div>
+                  <p class="check__label">内存峰值 &lt; 300MB <span class="pill pill--success">实测 214MB</span></p>
+                  <p class="check__evidence"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-terminal"/></svg><span>工作会话 · </span><span class="mono">src/export.ts:118 · 分块 2MB，写完即释放</span></p>
+                </div>
+              </div>
+              <div class="check">
+                <span class="check__mark"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-check"/></svg></span>
+                <div>
+                  <p class="check__label">vitest 全绿 <span class="pill pill--success">14 passed</span></p>
+                  <p class="check__evidence"><svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-terminal"/></svg><span>工作会话 · </span><span class="mono">tests/export.spec.ts · 14 passed · 0 failed · 2.1s</span></p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="dw-sec">
+            <div class="dw-sec__head">
+              <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-board"/></svg>
+              <h3>关联会话</h3>
+            </div>
+            <div class="sess-list">
+              <button class="sess-row" type="button" data-toast="打开工作区会话：订单导出 · 流式改造">
+                <span class="ws ws--htdot">H</span>
+                <span class="sess-row__main"><span class="sess-row__name">订单导出 · 流式改造</span><span class="sess-row__kind">主会话 · 已交付</span></span>
+                <span class="pill pill--success">已交付</span>
+                <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-chev-right"/></svg>
+              </button>
+              <button class="sess-row" type="button" data-toast="打开工作区会话：单测补全">
+                <span class="ws ws--htdot">H</span>
+                <span class="sess-row__main"><span class="sess-row__name">单测补全</span><span class="sess-row__kind">次会话 · 已交付</span></span>
+                <span class="pill pill--success">已交付</span>
+                <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-chev-right"/></svg>
+              </button>
+            </div>
+          </section>
+
+          <section class="dw-sec">
+            <div class="dw-sec__head">
+              <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-clock"/></svg>
+              <h3>时间线</h3>
+            </div>
+            <div class="timeline">
+              <div class="tl tl--run">
+                <span class="tl__dot"><i></i></span>
+                <div class="tl__body"><time class="tl__time">17:03</time><p class="tl__text"><b>派发</b> · 人工确认 Jev 62%</p></div>
+              </div>
+              <div class="tl tl--run">
+                <span class="tl__dot"><i></i></span>
+                <div class="tl__body"><time class="tl__time">17:08</time><p class="tl__text"><b>进展</b> export.ts 改完，跑基准</p></div>
+              </div>
+              <div class="tl tl--ok">
+                <span class="tl__dot"><i></i></span>
+                <div class="tl__body"><time class="tl__time">17:18</time><p class="tl__text"><b>工作会话交付</b> 3 个文件 + 测试输出</p></div>
+              </div>
+              <div class="tl tl--wait" id="tl-now">
+                <span class="tl__dot"><i></i></span>
+                <div class="tl__body"><time class="tl__time">17:21</time><p class="tl__text"><b>指挥官整理验收并更新任务板</b> · 待你确认</p></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="dw-sec">
+            <div class="dw-sec__head">
+              <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-file"/></svg>
+              <h3>交付物</h3>
+              <span class="n">3 个文件 · 24.1 KB</span>
+            </div>
+            <div class="files">
+              <div class="file">
+                <span class="file__icon"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-file"/></svg></span>
+                <span class="file__main"><span class="file__path">src/export.ts</span><span class="file__meta">TypeScript · 11.4 KB</span></span>
+                <button class="icon-btn" type="button" aria-label="预览 src/export.ts" data-toast="预览 src/export.ts">
+                  <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>
+                </button>
+              </div>
+              <div class="file">
+                <span class="file__icon"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-file"/></svg></span>
+                <span class="file__main"><span class="file__path">tests/export.spec.ts</span><span class="file__meta">TypeScript · 9.8 KB</span></span>
+                <button class="icon-btn" type="button" aria-label="预览 tests/export.spec.ts" data-toast="预览 tests/export.spec.ts">
+                  <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>
+                </button>
+              </div>
+              <div class="file">
+                <span class="file__icon"><svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-terminal"/></svg></span>
+                <span class="file__main"><span class="file__path">bench/export-10k.log</span><span class="file__meta">日志 · 2.9 KB</span></span>
+                <button class="icon-btn" type="button" aria-label="预览基准日志" data-toast="预览 bench/export-10k.log">
+                  <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer class="dw-foot" id="dw-foot">
+          <button class="btn" type="button" data-toast="改派：选择另一个工作区或会话">改派</button>
+          <button class="btn" type="button" id="btn-rework">返工</button>
+          <button class="btn btn--success" type="button" id="btn-accept">
+            <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-check"/></svg>通过验收
+          </button>
+        </footer>
+      </aside>
+    </section>
+
+    <!-- ============================ S5 设置 ============================ -->
+    <section class="scene" id="scene-settings" hidden aria-label="设置">
+      <div class="settings">
+        <nav class="set-nav" aria-label="设置分类">
+          <p class="set-nav__title">设置</p>
+          <button class="set-nav__item is-active" type="button" data-set="commander" aria-current="page">
+            <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-mark"/></svg>指挥官
+          </button>
+          <button class="set-nav__item" type="button" data-set="workspaces">
+            <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-folder"/></svg>工作区
+          </button>
+          <button class="set-nav__item" type="button" data-set="jev">
+            <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-shield"/></svg>派发与 Jev
+          </button>
+          <button class="set-nav__item" type="button" data-set="board">
+            <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-board"/></svg>看板
+          </button>
+          <button class="set-nav__item" type="button" data-set="appearance">
+            <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-sun"/></svg>外观与通知
+          </button>
+          <button class="set-nav__item" type="button" data-set="about">
+            <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-cpu"/></svg>关于
+          </button>
+        </nav>
+
+        <div class="set-body">
+          <!-- 指挥官 -->
+          <section class="set-panel" id="set-commander">
+            <div class="set-head">
+              <h2>指挥官</h2>
+              <p>指挥官只澄清、派发、维护看板状态、整理工作会话的产出并更新看板。拆分工作由工作会话负责，验收由你确认。</p>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>指挥官会话</h3><p>指挥官自身运行在一个独立的 DSH 会话里。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>当前会话</strong><span>派发决策与播报都记录在这里</span></div>
+                <div class="set-row__control">
+                  <div class="cmdr-session">
+                    <div class="cmdr-session__main">
+                      <span class="cmdr-session__name">指挥官 · 主</span>
+                      <span class="cmdr-session__id mono">ses_cmdr_8f31a2</span>
+                      <span class="pill pill--success"><i></i>运行中</span>
+                    </div>
+                    <div class="cmdr-session__acts">
+                      <button class="btn btn--sm" type="button" data-toast="已打开指挥官会话 · 指挥官 · 主">
+                        <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>打开会话
+                      </button>
+                      <button class="btn btn--sm" type="button" data-toast="已绑定到新会话 ses_cmdr_c40e17">绑定到新会话</button>
+                      <button class="btn btn--sm" type="button" data-toast="选择已有会话：列出最近 10 个指挥官会话">选择已有会话</button>
+                    </div>
+                  </div>
+                  <p class="tool-note" style="margin-top:6px">路径 <span class="mono">~/.dsh/commander/workspace</span></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>运行环境</h3><p>指挥官自己的会话目录，与各工作区仓库相互独立。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>会话工作区路径</strong><span>只读展示，需通过目录选择器更改</span></div>
+                <div class="set-row__control">
+                  <div class="path-row">
+                    <input class="input mono" value="~/.dsh/commander/workspace" readonly aria-label="会话工作区路径">
+                    <button class="btn" type="button" data-toast="选择目录：演示中不打开系统面板">
+                      <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-folder"/></svg>选择目录
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>Provider</strong><span>对话与派发使用的模型服务</span></div>
+                <div class="set-row__control"><select class="select" aria-label="Provider"><option>DeepSeek</option><option>Anthropic</option><option>OpenAI</option></select></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>Model</strong><span>指挥官自身的推理模型</span></div>
+                <div class="set-row__control"><select class="select" aria-label="Model"><option>deepseek-v4</option><option>deepseek-v4-mini</option></select></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>Reasoning effort</strong><span>越高越慢，对澄清质量影响明显</span></div>
+                <div class="set-row__control"><select class="select" aria-label="Reasoning effort"><option>high</option><option>medium</option><option>low</option></select></div>
+              </div>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>系统提示词</h3><p>决定指挥官的语气与派发习惯，不改变工具权限。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>策略</strong><span>跟随 DSH 会随宿主升级自动更新</span></div>
+                <div class="set-row__control">
+                  <select class="select" aria-label="系统提示词策略"><option>跟随 DSH</option><option>自定义</option></select>
+                  <details class="fold">
+                    <summary>
+                      <svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-chev-down"/></svg>
+                      查看当前生效的系统提示词摘要
+                    </summary>
+                    <div class="fold__body">
+                      你是指挥官，不是执行者。把用户的一句话拆成可验收的任务，判断应该派给哪个工作区，然后持续跟进。
+                      <span class="mono">你只调度：不写代码、不跑命令、不读工作区文件。
+需要用户决策时，只问一个问题，并给出推荐答案。</span>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>能力</h3><p>技能与 MCP 不在指挥官内单独配置。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>技能与 MCP</strong><span>由 DSH 能力面板统一管理</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <button class="btn btn--sm" type="button" data-toast="已打开 DSH 能力面板">
+                    <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-external"/></svg>打开能力面板
+                  </button>
+                  <span class="tool-note" style="margin:0">指挥官只使用 DSH 授予的任务与看板能力。</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 派发与 Jev -->
+          <section class="set-panel" id="set-jev" hidden>
+            <div class="set-head">
+              <h2>派发与 Jev</h2>
+              <p>Jev 在派发前给「目标工作区 + 新会话 / 附加会话」打一个置信度。低于阈值时暂停，交给你确认。</p>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>Jev 服务</h3><p>可以是托管服务，也可以是本地 System One。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>服务商</strong><span>切换后需要重新测试连接</span></div>
+                <div class="set-row__control"><select class="select" aria-label="Jev 服务商"><option>TypeSafe Jev</option><option>TokenRhythm NeoHorse-Jev</option><option>OpenAI Decisions</option><option>本地 System One</option><option>自定义端点</option></select></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>Endpoint</strong><span>HTTPS 端点，仅在内存中使用</span></div>
+                <div class="set-row__control"><input class="input mono" value="https://api.typesafe.ai/v1/systemone" aria-label="Jev Endpoint"></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>API Key 来源</strong><span>环境变量更安全，不会落盘</span></div>
+                <div class="set-row__control">
+                  <div class="seg-control" role="group" aria-label="API Key 来源">
+                    <button class="seg-control__btn is-active" type="button" data-key-source="env" aria-pressed="true">环境变量（推荐）</button>
+                    <button class="seg-control__btn" type="button" data-key-source="manual" aria-pressed="false">手动填写</button>
+                  </div>
+
+                  <div class="key-pane" id="key-pane-env">
+                    <div class="key-row">
+                      <input class="input mono" value="JEV_API_KEY" readonly aria-label="环境变量名">
+                      <span class="pill pill--success"><i></i>已检测到</span>
+                    </div>
+                    <p class="set-foot-note">从 DSH 进程环境读取，不落盘。</p>
+                  </div>
+
+                  <div class="key-pane" id="key-pane-manual" hidden>
+                    <div class="key-row">
+                      <input class="input mono" value="••••••••••••••••" readonly aria-label="已保存的 API Key">
+                      <button class="btn" type="button" data-toast="替换 Key：演示中不写入任何密钥">替换</button>
+                    </div>
+                    <p class="set-foot-note">保存在 DSH 凭据库（加密）。</p>
+                  </div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>Jev 模型</strong><span>决定判定延迟与稳定性</span></div>
+                <div class="set-row__control"><input class="input mono input--short" value="jev-latest" aria-label="Jev 模型"></div>
+              </div>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>判定规则</h3><p>阈值是唯一的强制人工介入点。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>置信度阈值</strong><span>选中项概率低于阈值时暂停派发，交由你确认</span></div>
+                <div class="set-row__control">
+                  <div class="slider-wrap">
+                    <div class="slider-head"><strong id="threshold-value">80%</strong><span>允许范围 50% 到 99%</span></div>
+                    <input class="slider" type="range" min="50" max="99" value="80" id="threshold-slider" aria-label="置信度阈值" style="--fill:80%">
+                    <div class="slider-ticks"><span>50%</span><span>75%</span><span>99%</span></div>
+                    <p class="slider-note">阈值越高，越多任务需要你点头；低于阈值时，任务停在「待派发确认」列。</p>
+                  </div>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>超时</strong><span>Jev 未在时限内返回时的处理</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <input class="input mono input--short" value="1.5s" aria-label="Jev 超时">
+                  <select class="select" aria-label="超时行为"><option>暂停并询问</option><option>用模型判断</option></select>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>自动选择工作区</strong><span>关闭后每次派发都要你指定工作区</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <button class="switch" type="button" role="switch" aria-checked="true" aria-label="自动选择工作区"></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="set-note-card">
+              <p class="set-note-card__title">并发模型</p>
+              <p class="set-note-card__body">不同工作区的会话可并行执行；同一会话内的任务自动排队（queued）。无需配置上限。</p>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>判定输入</h3><p>只读 · 这些内容会发送给 Jev，用来计算置信度。</p></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>发给 Jev 的字段</strong><span>不含会话正文，不含代码内容</span></div>
+                <div class="set-row__control">
+                  <dl class="ro-list">
+                    <div class="ro-row"><dt>任务目标</dt><dd>订单导出改流式 + 补单测</dd></div>
+                    <div class="ro-row"><dt>验收项</dt><dd>1 万行 &lt; 8s；内存峰值 &lt; 300MB；vitest 全绿</dd></div>
+                    <div class="ro-row"><dt>工作区目录</dt><dd class="mono">~/Documents/GitHub/HtDot</dd></div>
+                    <div class="ro-row"><dt>最近会话摘要</dt><dd>3 条，均为导出链路相关；最近一条 18 分钟前</dd></div>
+                    <div class="ro-row"><dt>工作区摘要</dt><dd>HtDot：电商后台：订单、结算、导出链路</dd></div>
+                  </dl>
+                  <p class="tool-note">摘要由本地生成，只有标题与进展语句会离开本机。</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 工作区 -->
+          <section class="set-panel" id="set-workspaces" hidden>
+            <div class="set-head">
+              <h2>工作区</h2>
+              <p>只有勾选的工作区会进入 Jev 候选集；摘要会作为判定输入。</p>
+            </div>
+
+            <div class="set-group">
+              <div class="set-group__head"><h3>候选工作区</h3><p>路径来自本地 DSH 配置，未勾选的工作区不会被派发。新会话默认继承已启用能力；自动选择由 DSH 能力面板按任务决定本会话能力，仅本次会话生效。</p></div>
+              <div class="ws-config">
+                <div class="ws-config__row">
+                  <input class="checkbox" type="checkbox" id="ws-htdot" checked aria-label="启用 HtDot">
+                  <label class="ws-config__main" for="ws-htdot">
+                    <span class="ws-config__name"><span class="ws ws--htdot">H</span>HtDot</span>
+                    <span class="ws-config__path mono">~/Documents/GitHub/HtDot</span>
+                    <span class="ws-config__summary">电商后台：订单、结算、导出链路</span>
+                    <span class="ws-config__src">来源 人工</span>
+                  <div class="ws-config__cap">
+                    <span class="ws-config__caplabel">能力策略</span>
+                    <select class="select ws-config__capselect" aria-label="HtDot 能力选择策略">
+                      <option>继承工作区（默认）</option>
+                      <option selected>自动选择</option>
+                    </select>
+                    <span class="ws-config__caphint">由能力面板按任务选择</span>
+                  </div>
+                  <div class="ws-config__acts">
+                    <button class="btn btn--sm" type="button" data-toast="编辑 HtDot 摘要：可直接改写后保存">编辑</button>
+                    <button class="btn btn--sm" type="button" data-summarize="HtDot">生成摘要</button>
+                  </div>
+                </div>
+
+                <div class="ws-config__row">
+                  <input class="checkbox" type="checkbox" id="ws-mira" checked aria-label="启用 Mira">
+                  <label class="ws-config__main" for="ws-mira">
+                    <span class="ws-config__name"><span class="ws ws--mira">M</span>Mira</span>
+                    <span class="ws-config__path mono">~/Documents/GitHub/Mira</span>
+                    <span class="ws-config__summary">知识库与检索：RAG、索引、文档站</span>
+                    <span class="ws-config__src">来源 模型</span>
+                  <div class="ws-config__cap">
+                    <span class="ws-config__caplabel">能力策略</span>
+                    <select class="select ws-config__capselect" aria-label="Mira 能力选择策略">
+                      <option selected>继承工作区（默认）</option>
+                      <option>自动选择</option>
+                    </select>
+                    <span class="ws-config__caphint">使用已启用能力</span>
+                  </div>
+                  <div class="ws-config__acts">
+                    <button class="btn btn--sm" type="button" data-toast="编辑 Mira 摘要：可直接改写后保存">编辑</button>
+                    <button class="btn btn--sm" type="button" data-summarize="Mira">重新生成</button>
+                  </div>
+                </div>
+
+                <div class="ws-config__row">
+                  <input class="checkbox" type="checkbox" id="ws-live" aria-label="启用 Live">
+                  <label class="ws-config__main" for="ws-live">
+                    <span class="ws-config__name"><span class="ws ws--live">L</span>Live</span>
+                    <span class="ws-config__path mono">~/Documents/GitHub/Live</span>
+                    <span class="ws-config__summary">直播中台：埋点、抽奖、回放</span>
+                    <span class="ws-config__src">来源 人工</span>
+                  <div class="ws-config__cap">
+                    <span class="ws-config__caplabel">能力策略</span>
+                    <select class="select ws-config__capselect" aria-label="Live 能力选择策略">
+                      <option selected>继承工作区（默认）</option>
+                      <option>自动选择</option>
+                    </select>
+                    <span class="ws-config__caphint">使用已启用能力</span>
+                  </div>
+                  <div class="ws-config__acts">
+                    <button class="btn btn--sm" type="button" data-toast="编辑 Live 摘要：可直接改写后保存">编辑</button>
+                    <button class="btn btn--sm" type="button" data-summarize="Live">生成摘要</button>
+                  </div>
+                </div>
+              </div>
+              <div class="ws-config__foot">
+                <button class="btn btn--sm" type="button" data-toast="添加工作区：选择一个本地仓库目录">
+                  <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-plus"/></svg>添加工作区
+                </button>
+                <span class="set-foot-note">未勾选的工作区不会被派发</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 看板 -->
+          <section class="set-panel" id="set-board" hidden>
+            <div class="set-head">
+              <h2>看板</h2>
+              <p>看板由指挥官自动维护；人工拖动或改派会被记录并同步回去。</p>
+            </div>
+            <div class="set-group">
+              <div class="set-group__head"><h3>默认视图</h3></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>默认项目</strong><span>打开看板时先看到的范围</span></div>
+                <div class="set-row__control"><select class="select" aria-label="默认项目"><option>全部工作区</option><option>HtDot</option><option>Mira</option><option>Live</option></select></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>归档策略</strong><span>完成多久后从看板折叠</span></div>
+                <div class="set-row__control"><select class="select" aria-label="归档策略"><option>7 天后归档</option><option>14 天后归档</option><option>不自动归档</option></select></div>
+              </div>
+            </div>
+            <div class="set-group">
+              <div class="set-group__head"><h3>同步</h3></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>人工改动同步给指挥官</strong><span>拖动卡片、改派、归档都会写一条事件</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <button class="switch" type="button" role="switch" aria-checked="true" aria-label="人工改动同步给指挥官"></button>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>注入方式</strong><span>只在下一轮对话开头作为一条系统事实，不改写任务</span></div>
+                <div class="set-row__control"><p class="slider-note mono">[board] 直播中台埋点补齐 → 进行中 · 由用户手动移动 · 17:12</p></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>回收站</strong><span>删除的任务保留 30 天</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <button class="btn btn--sm" type="button" data-toast="回收站：3 条任务，全部来自 HtDot">
+                    <svg class="od-icon" style="--od-icon-size:13px" aria-hidden="true"><use href="#i-trash"/></svg>打开回收站
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 外观与通知 -->
+          <section class="set-panel" id="set-appearance" hidden>
+            <div class="set-head">
+              <h2>外观与通知</h2>
+              <p>悬浮入口是唯一常驻的界面元素，其余都按需出现。</p>
+            </div>
+            <div class="set-group">
+              <div class="set-group__head"><h3>外观</h3></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>主题</strong><span>与 DSH 主题保持一致</span></div>
+                <div class="set-row__control">
+                  <select class="select" aria-label="主题" id="theme-select">
+                    <option value="system">跟随系统</option>
+                    <option value="light">浅色</option>
+                    <option value="dark" selected>深色</option>
+                  </select>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>悬浮入口位置</strong><span>右下角或左下角</span></div>
+                <div class="set-row__control"><select class="select" aria-label="悬浮入口位置"><option>右下</option><option>左下</option></select></div>
+              </div>
+            </div>
+            <div class="set-group">
+              <div class="set-group__head"><h3>通知</h3></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>快捷键</strong><span>唤起或收起指挥面板</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <input class="input mono input--short" value="⌃⌥C" aria-label="唤起快捷键">
+                  <button class="btn btn--sm" type="button" data-toast="录制快捷键：按下新的组合键即可">重新录制</button>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>播报频率</strong><span>合并会把 5 分钟内的进展压成一条</span></div>
+                <div class="set-row__control"><select class="select" aria-label="播报频率"><option>合并播报</option><option>逐条播报</option></select></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>静音时段</strong><span>期间只显示角标，不弹出气泡</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <input class="input mono input--short" value="22:00" aria-label="静音开始">
+                  <span class="muted">到</span>
+                  <input class="input mono input--short" value="08:30" aria-label="静音结束">
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 关于 -->
+          <section class="set-panel" id="set-about" hidden>
+            <div class="set-head">
+              <h2>关于</h2>
+              <p>指挥官作为 DSH 的内嵌模块运行，跟随宿主版本更新。</p>
+            </div>
+            <div class="set-group">
+              <div class="set-group__head"><h3>版本</h3></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>指挥官</strong><span>DSH 内嵌模块</span></div>
+                <div class="set-row__control"><p class="mono" style="font-size:12px">2.0.0 · build 1180</p></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>宿主</strong><span>DeepSeek Harness</span></div>
+                <div class="set-row__control"><p class="mono" style="font-size:12px">dsh 0.9.4 · design-platform</p></div>
+              </div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>Jev 连通性</strong><span>每秒探测一次，异常时暂停派发</span></div>
+                <div class="set-row__control set-row__control--inline">
+                  <span class="pill pill--success"><i></i>正常 320ms</span>
+                  <button class="btn btn--sm" type="button" id="btn-test-jev" data-toast="测试连接：Jev 正常，320ms，模型 jev-latest">测试连接</button>
+                </div>
+              </div>
+            </div>
+            <div class="set-group">
+              <div class="set-group__head"><h3>边界</h3></div>
+              <div class="set-row">
+                <div class="set-row__label"><strong>只调度，不执行</strong><span>所有命令都在工作区会话中运行</span></div>
+                <div class="set-row__control"><p class="tool-note" style="margin:0">工作会话的审批与提问只在对应界面处理，不进入指挥官上下文，也不出现在看板上。</p></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ S6 组件 ============================ -->
+    <section class="scene" id="scene-spec" hidden aria-label="组件">
+      <div class="spec">
+        <header class="spec__top">
+          <h1>组件与 token</h1>
+          <p>对齐 DSH design-platform.css，明暗两套同源</p>
+          <span>r 4 / 8 / 12 / 16 / 20 / 28</span>
+        </header>
+
+        <div class="spec__body">
+          <div class="token-pair">
+            <section class="token-set">
+              <header class="token-set__head">
+                <svg class="od-icon" style="--od-icon-size:13px;color:#0F1115" aria-hidden="true"><use href="#i-sun"/></svg>
+                <strong>浅色</strong>
+                <span>data-theme="light"</span>
+              </header>
+              <div class="token-set__body">
+                <div class="swatches">
+                  <div class="swatch"><span class="swatch__chip" style="background:#FFFFFF"></span><span class="swatch__name">bg-base</span><span class="swatch__hex">#FFFFFF</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#F5F6F7"></span><span class="swatch__name">bg-module</span><span class="swatch__hex">#F5F6F7</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#E9ECF2"></span><span class="swatch__name">bg-overlay</span><span class="swatch__hex">#E9ECF2</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#FAFAFA"></span><span class="swatch__name">card</span><span class="swatch__hex">#FAFAFA</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#0F1115"></span><span class="swatch__name">label-1</span><span class="swatch__hex">#0F1115</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#61666B"></span><span class="swatch__name">label-2</span><span class="swatch__hex">#61666B</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#81858C"></span><span class="swatch__name">label-3</span><span class="swatch__hex">#81858C</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:rgba(38,49,72,.06)"></span><span class="swatch__name">hover</span><span class="swatch__hex">38,49,72 .06</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#4176E6"></span><span class="swatch__name">brand</span><span class="swatch__hex">#4176E6</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#22C55E"></span><span class="swatch__name">success</span><span class="swatch__hex">#22C55E</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#F59E0B"></span><span class="swatch__name">warning</span><span class="swatch__hex">#F59E0B</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#EF4444"></span><span class="swatch__name">danger</span><span class="swatch__hex">#EF4444</span></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="token-set">
+              <header class="token-set__head">
+                <svg class="od-icon" style="--od-icon-size:13px;color:#F9FAFB" aria-hidden="true"><use href="#i-moon"/></svg>
+                <strong>深色</strong>
+                <span>data-theme="dark"</span>
+              </header>
+              <div class="token-set__body">
+                <div class="swatches">
+                  <div class="swatch"><span class="swatch__chip" style="background:#151517"></span><span class="swatch__name">bg-base</span><span class="swatch__hex">#151517</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#232324"></span><span class="swatch__name">bg-module</span><span class="swatch__hex">#232324</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#3C3C3D"></span><span class="swatch__name">bg-overlay</span><span class="swatch__hex">#3C3C3D</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#212123"></span><span class="swatch__name">card</span><span class="swatch__hex">#212123</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#F9FAFB"></span><span class="swatch__name">label-1</span><span class="swatch__hex">#F9FAFB</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#CFD3D6"></span><span class="swatch__name">label-2</span><span class="swatch__hex">#CFD3D6</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#ADB2B8"></span><span class="swatch__name">label-3</span><span class="swatch__hex">#ADB2B8</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:rgba(255,255,255,.06)"></span><span class="swatch__name">hover</span><span class="swatch__hex">255 .06</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#4176E6"></span><span class="swatch__name">brand</span><span class="swatch__hex">#4176E6</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#22C55E"></span><span class="swatch__name">success</span><span class="swatch__hex">#22C55E</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#F59E0B"></span><span class="swatch__name">warning</span><span class="swatch__hex">#F59E0B</span></div>
+                  <div class="swatch"><span class="swatch__chip" style="background:#A78BFA"></span><span class="swatch__name">violet</span><span class="swatch__hex">#A78BFA</span></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="spec-grid">
+            <article class="spec-card">
+              <p class="spec-card__label">按钮</p>
+              <div class="spec-card__stage">
+                <button class="btn btn--primary btn--sm" type="button">主操作</button>
+                <button class="btn btn--sm" type="button">次操作</button>
+                <button class="btn btn--sm" type="button" aria-disabled="true">不可用</button>
+              </div>
+              <p class="spec-card__note">h <b>32</b> / sm <b>28</b> · r 8 · 主按钮仅一个/视口</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">状态 pill</p>
+              <div class="spec-card__stage">
+                <span class="pill"><i></i>待确认</span>
+                <span class="pill pill--brand"><i></i>进行中</span>
+                <span class="pill pill--warning"><i></i>受阻</span>
+                <span class="pill pill--violet"><i></i>待验收</span>
+                <span class="pill pill--success"><i></i>已完成</span>
+              </div>
+              <p class="spec-card__note">h <b>20</b> · r 4 · 点 + 文字双编码，不靠颜色单传</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">悬浮球</p>
+              <div class="spec-card__stage" style="align-items:flex-end;gap:14px">
+                <div class="spec-orb"></div>
+                <div class="spec-orb spec-orb--think"></div>
+                <div class="spec-orb spec-orb--attn"></div>
+                <div class="spec-orb spec-orb--done"></div>
+              </div>
+              <p class="spec-card__note">桌面 <b>56</b> / 图例 <b>40</b> · 品牌色环 + 中心点</p>
+            </article>
+
+            <article class="spec-card spec-card--wide">
+              <p class="spec-card__label">任务卡</p>
+              <div class="spec-card__stage" style="align-items:stretch;gap:9px;width:100%">
+                <div class="tcard tcard--run" style="flex:1;min-width:0">
+                  <span class="tcard__title">直播中台埋点补齐</span>
+                  <span class="progress">
+                    <span class="progress__bar"><i style="width:42%"></i></span>
+                    <span class="progress__meta"><span>42%</span><span>12 分钟</span></span>
+                  </span>
+                  <span class="tcard__foot"><span class="ws ws--live">L</span><time>17:09</time></span>
+                </div>
+                <div class="tcard tcard--confirm" style="flex:1;min-width:0">
+                  <span class="tcard__title">订单导出改流式 + 补单测</span>
+                  <span class="tcard__tag">Jev 62% · 等你确认</span>
+                  <span class="tcard__foot"><span class="ws ws--htdot">H</span><time>17:21</time></span>
+                </div>
+              </div>
+              <p class="spec-card__note">r <b>12</b> · 左 3px 状态条 · hover 上浮 <b>2px</b> + 快捷操作</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">播报气泡</p>
+              <div class="spec-card__stage spec-card__stage--col">
+                <div style="padding:9px 10px;border-radius:12px;border:1px solid var(--border-l2);background:var(--bg-base)">
+                  <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+                    <svg class="od-icon" style="--od-icon-size:11px;color:var(--success)" aria-hidden="true"><use href="#i-check"/></svg>
+                    <span style="font-size:9.5px;color:var(--label-3)">指挥官播报</span>
+                  </div>
+                  <p style="font-size:11.5px;line-height:1.5">订单导出 已改完 · 2 项验收等你</p>
+                </div>
+              </div>
+              <p class="spec-card__note">宽 <b>268</b> · r 12 · 2 分钟前自动折叠</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">审批条</p>
+              <div class="spec-card__stage spec-card__stage--col">
+                <div style="padding:8px 9px;border-radius:10px;border:1px solid var(--border-l1);border-left:3px solid var(--warning);background:var(--bg-base)">
+                  <p style="font-size:11px;font-weight:600;margin-bottom:4px">HtDot 需要你允许运行测试</p>
+                  <p class="mono" style="font-size:9.5px;color:var(--label-3);line-height:1.6">pnpm vitest run tests/export.spec.ts</p>
+                </div>
+              </div>
+              <p class="spec-card__note">左 <b>3px</b> 琥珀条 · 仅在界面处理，不进上下文</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">输入区</p>
+              <div class="spec-card__stage" style="width:100%">
+                <div class="field" style="width:100%">
+                  <textarea rows="1" placeholder="交代一件事…" aria-label="示例输入"></textarea>
+                  <div class="field__bar">
+                    <span class="chip"><svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-at"/></svg>工作区</span>
+                    <span class="send-btn" style="pointer-events:none"><svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-arrow-up"/></svg></span>
+                  </div>
+                </div>
+              </div>
+              <p class="spec-card__note">字段 r <b>12</b> · 发送 <b>28</b> 品牌色 · focus 环 2px</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">设置控件</p>
+              <div class="spec-card__stage">
+                <button class="switch" type="button" role="switch" aria-checked="true" aria-label="示例开关"></button>
+                <select class="select" style="max-width:110px" aria-label="示例下拉"><option>deepseek-v4</option></select>
+                <div class="stepper" style="height:28px">
+                  <button type="button" aria-label="减少" style="height:26px">−</button>
+                  <output style="padding:3px 0">3</output>
+                  <button type="button" aria-label="增加" style="height:26px">+</button>
+                </div>
+              </div>
+              <p class="spec-card__note">switch <b>36×20</b> · select h 32 · stepper 28</p>
+            </article>
+
+            <article class="spec-card">
+              <p class="spec-card__label">空态</p>
+              <div class="spec-card__stage" style="width:100%">
+                <div class="spec-empty">
+                  <svg class="od-icon" style="--od-icon-size:16px" aria-hidden="true"><use href="#i-inbox"/></svg>
+                  <strong>这一列现在是空的</strong>
+                  <span>交代一件事，指挥官会拆好派出去</span>
+                </div>
+              </div>
+              <p class="spec-card__note">虚线 <b>1px</b> · 说明为什么空 + 下一步</p>
+            </article>
+
+            <article class="spec-card spec-card--wide">
+              <p class="spec-card__label">审批卡 · 带打开会话</p>
+              <div class="spec-card__stage spec-card__stage--col">
+                <div style="width:100%;border:1px solid var(--border-l2);border-left:3px solid var(--warning);border-radius:12px;background:var(--bg-base);overflow:hidden">
+                  <div class="approval__head">
+                    <svg class="od-icon" style="--od-icon-size:12px;color:var(--warning)" aria-hidden="true"><use href="#i-shield"/></svg>
+                    <span>工作会话审批</span>
+                    <span class="pill pill--warning"><i></i>等待你</span>
+                  </div>
+                  <p class="approval__title">HtDot 需要你允许运行测试</p>
+                  <div class="approval__acts">
+                    <button class="btn btn--sm" type="button" disabled>拒绝</button>
+                    <button class="btn btn--sm" type="button" disabled>总是允许</button>
+                    <button class="btn btn--sm btn--primary" type="button" disabled>允许</button>
+                  </div>
+                  <div class="approval__foot">
+                    <p class="approval__note">工作会话审批 · 仅界面处理，不进指挥官</p>
+                    <span class="link-btn approval__open">打开会话
+                      <svg class="od-icon" style="--od-icon-size:11px" aria-hidden="true"><use href="#i-external"/></svg>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p class="spec-card__note">左 <b>3px</b> 琥珀条 · 底部 <b>打开会话</b> 与说明同排</p>
+            </article>
+
+            <article class="spec-card spec-card--wide">
+              <p class="spec-card__label">派发卡 · 三按钮与自定义展开</p>
+              <div class="spec-card__stage spec-card__stage--col">
+                <div style="display:grid;gap:6px;width:100%;max-width:300px">
+                  <button class="btn btn--primary btn--block" type="button" disabled>采用建议</button>
+                  <button class="btn btn--block" type="button" disabled>自定义选择</button>
+                  <span class="link-btn" style="justify-self:center">取消</span>
+                </div>
+                <div style="display:grid;gap:6px;width:100%;max-width:300px;padding-top:8px;border-top:1px dashed var(--border-l1)">
+                  <div class="custom__row"><span class="custom__label">工作区</span><span class="chip" style="width:100%;justify-content:space-between">HtDot（电商后台：订单、结算、导出链路）<svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-chev-down"/></svg></span></div>
+                  <div class="custom__row"><span class="custom__label">会话</span><span class="chip" style="width:100%;justify-content:space-between">新建会话<svg class="od-icon" style="--od-icon-size:12px" aria-hidden="true"><use href="#i-chev-down"/></svg></span></div>
+                  <p class="custom__note">自定义目标会记录为 override，不改变 Jev 的判定结果。</p>
+                </div>
+              </div>
+              <p class="spec-card__note">主 <b>采用建议</b> · 次 <b>自定义选择</b> · 展开后两下拉 + override 提示</p>
+            </article>
+
+            <article class="spec-card spec-card--wide">
+              <p class="spec-card__label">工作区配置行</p>
+              <div class="spec-card__stage spec-card__stage--col">
+                <div class="ws-config" style="width:100%;border:1px solid var(--border-l1);border-radius:12px;overflow:hidden">
+                  <div class="ws-config__row">
+                    <input class="checkbox" type="checkbox" checked aria-label="示例勾选框">
+                    <span class="ws-config__main">
+                      <span class="ws-config__name"><span class="ws ws--htdot">H</span>HtDot</span>
+                      <span class="ws-config__path mono">~/Documents/GitHub/HtDot</span>
+                      <span class="ws-config__summary">电商后台：订单、结算、导出链路</span>
+                      <span class="ws-config__src">来源 人工</span>
+                    </span>
+                    <span class="ws-config__acts">
+                      <span class="btn btn--sm">编辑</span>
+                      <span class="btn btn--sm">生成摘要</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p class="spec-card__note">勾选框 + 名称 + 路径 + 摘要 + 来源 + 两个操作</p>
+            </article>
+
+            <article class="spec-card spec-card--wide">
+              <p class="spec-card__label">派发确认卡 · 置信度</p>
+              <div class="spec-card__stage spec-card__stage--col">
+                <div class="conf" style="width:100%;max-width:340px">
+                  <div class="conf__top"><span>置信度</span><strong class="conf__num mono">62%</strong></div>
+                  <div class="conf__bar"><i style="width:62%"></i><span class="conf__tick" style="left:80%"></span></div>
+                  <div class="conf__scale"><span>0</span><span class="conf__thr">阈值 80%</span><span>100</span></div>
+                </div>
+              </div>
+              <p class="spec-card__note">条 h <b>6</b> · 阈值刻度 <b>2px</b> · 低于阈值暂停派发</p>
+            </article>
+
+            <article class="spec-card spec-card--wide">
+              <p class="spec-card__label">圆角 · 间距 · 字号</p>
+              <div class="spec-card__stage" style="gap:26px;align-items:flex-start">
+                <div class="tok-row">
+                  <div class="tok"><span class="tok-radius" style="width:16px;height:16px;border-radius:4px"></span><span class="mono">4</span></div>
+                  <div class="tok"><span class="tok-radius" style="width:20px;height:20px;border-radius:8px"></span><span class="mono">8</span></div>
+                  <div class="tok"><span class="tok-radius" style="width:24px;height:24px;border-radius:12px"></span><span class="mono">12</span></div>
+                  <div class="tok"><span class="tok-radius" style="width:28px;height:28px;border-radius:16px"></span><span class="mono">16</span></div>
+                  <div class="tok"><span class="tok-radius" style="width:32px;height:32px;border-radius:20px"></span><span class="mono">20</span></div>
+                  <div class="tok"><span class="tok-radius" style="width:36px;height:36px;border-radius:28px"></span><span class="mono">28</span></div>
+                </div>
+                <div class="tok-row">
+                  <div class="tok"><span class="tok-bar" style="width:4px"></span><span class="mono">4</span></div>
+                  <div class="tok"><span class="tok-bar" style="width:8px"></span><span class="mono">8</span></div>
+                  <div class="tok"><span class="tok-bar" style="width:12px"></span><span class="mono">12</span></div>
+                  <div class="tok"><span class="tok-bar" style="width:16px"></span><span class="mono">16</span></div>
+                  <div class="tok"><span class="tok-bar" style="width:24px"></span><span class="mono">24</span></div>
+                </div>
+                <div class="tok-row" style="align-items:baseline">
+                  <div class="tok"><span style="font-size:10.5px">10.5</span><span class="mono">10.5</span></div>
+                  <div class="tok"><span style="font-size:11.5px">11.5</span><span class="mono">11.5</span></div>
+                  <div class="tok"><span style="font-size:13px">13</span><span class="mono">13</span></div>
+                  <div class="tok"><span style="font-size:16px">16</span><span class="mono">16</span></div>
+                  <div class="tok"><span style="font-size:20px;line-height:1.4">20</span><span class="mono">20</span></div>
+                </div>
+              </div>
+              <p class="spec-card__note">过渡 <b>.2s cubic-bezier(.4,0,.2,1)</b> · 数字 tabular-nums · 正文 13px / 行高 1.55</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <svg class="od-icon" style="--od-icon-size:14px" aria-hidden="true"><use href="#i-check"/></svg>
+  <span id="toast-text"></span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

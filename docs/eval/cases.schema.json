@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Jev dispatch evaluation case",
+  "type": "object",
+  "required": ["id", "task", "workspaces", "sessions", "expected"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "task": {
+      "type": "object",
+      "required": ["title", "goal"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "goal": { "type": "string" },
+        "acceptanceHints": { "type": "array", "items": { "type": "string" } },
+        "priority": { "type": "string", "enum": ["low", "normal", "high", "urgent"] }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string" },
+        "workspaceHint": { "type": "string" }
+      }
+    },
+    "workspaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "summary": { "type": "string" },
+          "recentTasks": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "workspaceId", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "workspaceId": { "type": "string" },
+          "title": { "type": "string" },
+          "lastActiveAt": { "type": "string" },
+          "contextUsage": { "type": "number", "minimum": 0, "maximum": 1 },
+          "archived": { "type": "boolean" }
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "required": ["workspaceId", "mode"],
+      "additionalProperties": false,
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "mode": { "type": "string", "enum": ["new", "attach"] },
+        "sessionId": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  }
+}
