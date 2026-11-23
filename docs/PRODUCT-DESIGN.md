@@ -14,7 +14,7 @@
 
 | 角色 | 做 | 不做 |
 |---|---|---|
-| **指挥官** | 澄清需求、调 `dispatch_task`、维护任务状态与看板、**整理工作会话的产出为验收内容并更新看板**、播报 | **不拆分工作**、**不评估**、不执行、不碰审批 |
+| **指挥官** | 澄清需求、调 `commander_task_dispatch`、维护任务状态与看板、**整理工作会话的产出为验收内容并更新看板**、播报 | **不拆分工作**、**不评估**、不执行、不碰审批 |
 | **Jev** | 对"派到哪个工作区/会话"给出带置信度的判定 | 不生成任务、不拆分、不评估 |
 | **工作会话** | 自己拆分工作、执行、交付、在会话里说明产出 | 不定义验收流程、不写验收清单、不维护看板、不做派发决策 |
 | **你** | 低置信度派发确认、审批、验收、人工改看板 | —— |
@@ -83,10 +83,10 @@ draft(澄清中) ──建卡──> proposed(待派发确认)
 ### 4.1 流程
 
 ```
-指挥官模型：dispatch_task(taskId, candidate{workspaceId, mode, sessionId?})
+指挥官模型：commander_task_dispatch(taskId, candidate{workspaceId, mode, sessionId?})
         │
         ▼
-Host 工具 dispatch_task：
+Host 工具 commander_task_dispatch：
   1. 候选集 = **允许派发的工作区** × {新会话, 附加到匹配会话}，最多 6 个
   2. 调 Jev：输入 = 任务目标 + 验收提示（来自你的原话）+ 工作区摘要 + 最近会话摘要
             （不回传代码正文）
@@ -100,7 +100,7 @@ Host 工具 dispatch_task：
        a) 采用建议
        b) **自定义选择**：选工作区 + 选已有会话 / 新建会话
        c) 取消
-  5. dispatch_task(..., confirmed:true, confirmedBy:'user', finalTarget, capabilityNeeds?) → 按能力策略准备"本次会话"的能力并派发
+  5. commander_task_dispatch(..., confirmed:true, confirmedBy:'user', finalTarget, capabilityNeeds?) → 按能力策略准备"本次会话"的能力并派发
 ```
 
 ### 4.2 门控规则
@@ -171,9 +171,9 @@ Host 工具 dispatch_task：
 
 ### 6.1 谁改
 
-- 指挥官自主增删改：建卡、改状态、改字段、移动列、归档，不需要你确认。
-- 你也能改：拖拽、编辑、归档、改派。
-- **唯一需要你确认的是验收**：`accept_task` 只能由人触发。
+- 指挥官自主增删改：建卡、改状态、改字段、归档（通过工具），不需要你确认。
+- 你也能改：优先级/标题、取消、归档、恢复、继续派发；**看板不再支持拖拽改状态**。
+- **验收只能由人触发**：`POST /accept` 是唯一 `review→done` 入口。
 
 ### 6.2 人工改动注入
 
@@ -276,7 +276,7 @@ DSH Web GUI
 │       ├── 会话流：消息、任务卡、派发确认卡（采用/自定义）、成功条
 │       └── 输入区
 ├── 看板（main 整页或右侧栏 tab）
-│   ├── 五列 + 筛选 + 搜索 + 新建
+│   ├── 六列（待派发/待运行/运行中/受阻/待验收/已验收）+ 筛选 + 搜索 + 新建
 │   ├── 任务详情抽屉（决策记录 / 指挥官整理的验收内容 / 时间线 / 交付物）
 │   └── 设置页（指挥官 / 工作区 / 派发与 Jev / 看板 / 外观 / 关于）
 └── 能力面板（复用 DSH 现有能力设置）
@@ -289,7 +289,7 @@ DSH Web GUI
 ### 12.1 主流程
 
 1. 你点球输入命令 → 指挥官澄清 → 建任务。
-2. `dispatch_task`：模型建议 HtDot 新会话；Jev 62% < 80% → clarify。
+2. `commander_task_dispatch`：模型建议 HtDot 新会话；Jev 62% < 80% → clarify。
 3. 确认卡：建议 + 备选 + 原因；你可「采用建议」或「自定义选择」。
 4. 派发成功 → 进「进行中」。
 5. 工作会话自己拆分工作、执行；期间审批只在界面层处理（可「打开会话」）。
@@ -338,7 +338,8 @@ DSH Web GUI
 
 ### 13.4 看板
 
-- 五列；卡片 12px 圆角、左 3px 状态条。
+- 六列（待派发/待运行/运行中/受阻/待验收/已验收；取消/归档在回收站）；卡片 12px 圆角、左 3px 状态条；**无通用状态拖拽**。
+- 卡片徽标：依赖「等待 A 验收」、待确认、继续派发；抽屉进度五段（待派发→待运行→运行中→待验收→已验收），blocked 在运行中叠加受阻标记。
 - hover 快捷操作只有「打开会话」「归档」；**无催一下**。
 - 顶栏「看板由指挥官自动维护」+ 同步状态。
 
@@ -431,7 +432,7 @@ DSH Web GUI
     ├── 指挥官会话：sessionController.create/selectModel/prompt + 绑定/重绑
     ├── 会话创建：创建时应用能力策略（继承 / 自动选择；只在面板范围内）
     ├── 任务账本：storageDomain
-    ├── dispatch_task：白名单候选 + 工作区摘要 + Jev 门控 + 自定义确认
+    ├── commander_task_dispatch：白名单候选 + 工作区摘要 + Jev 门控 + 自定义确认
     ├── 能力策略：按工作区配置计算本次会话能力集，写入 session 能力设置（不改工作区）
     ├── Jev 客户端：环境变量或凭据库取 key
     ├── 事件订阅：turn/end、tool/result、deliverables；过滤审批/提问
@@ -476,7 +477,7 @@ DSH Web GUI
 |---|---|---|
 | M0 一期入口 | shell.overlay 球+面板 + 指挥官会话绑定 + 设置骨架 | DSH 内可唤起、能聊、可重绑 |
 | M1 派发 | 白名单 + 工作区摘要 + 两档能力策略 + Jev + 门控 + 确认卡 | 自动派发与自定义派发都走通 |
-| M2 看板 | 自主 CRUD、五列、详情、人工改动注入 | 一条命令走完 running→review→done |
+| M2 看板 | 自主 CRUD、六列、详情、人工改动注入、取消/归档/恢复 | 一条命令走完 running→review→done |
 | M0.5 评估 | 50 条真实派发案例跑 Jev，校准阈值 | auto precision ≥95%，coverage ≥40% |
 | M3 闭环 | 审批卡（含打开会话）、指挥官整理验收并更新看板、播报 | 不打开会话完成审批与验收 |
 | M4 二期 | 原生壳、系统级悬浮、全局热键 | 任意应用可见 |
@@ -508,19 +509,19 @@ DSH Web GUI
 
 | 工具 | 作用 | 约束 |
 |---|---|---|
-| `task_create` | 建任务（目标、你的原话） | 三条件下才建 |
-| `task_update` | 改状态/字段 | 状态机约束 |
-| `task_archive` | 归档/取消 | 记录原因 |
-| `dispatch_task` | Jev 门控派发（支持自定义目标 + 能力清单） | 低置信度返回 clarify；确认后 `confirmed:true`；自动能力仅限工作区已启用项 |
-| `follow_up` | 内部追问/巡检 | 不由用户触发按钮 |
-| `organize_report` | 读取工作会话产出，整理验收内容并更新任务板 | 只整理、不评估 |
-| `accept_task` / `rework_task` | 验收/返工 | 仅人触发 |
-| `board_query` | 查看看板 | 只读 |
+| `commander_task_create` | 建任务（目标、你的原话） | 三条件下才建 |
+| `commander_task_get` | 读单条最新任务（取 version/ready） | 只读 |
+| `commander_task_update` | action：edit/set_dependencies/block/cancel/recover；必带 expectedRevision | 状态机约束；done/archived 不可写 |
+| 人专用路由 | accept/archive/restore/cancel | 仅界面调用 |
+| `commander_task_dispatch` | Jev 门控派发（支持自定义目标 + 能力清单） | 低置信度返回 clarify；确认后 `confirmed:true`；自动能力仅限工作区已启用项 |
+| `commander_task_report` | 读取工作会话产出，整理验收内容并更新任务板 | 只整理、不评估 |
+| `POST /accept` / `POST /continue` | 验收/继续派发 | 仅人触发 |
+| `commander_task_list` | 查看看板 | 只读 |
 | `brief_user` | 播报 | 节流 + 优先级 |
 
 提示词要点：
 1. 你是调度者，不拆分工作、不评估结果、不写代码。
-2. 派发必须调 `dispatch_task`，不要绕过 Jev 直接建会话。
+2. 派发必须调 `commander_task_dispatch`，不要绕过 Jev 直接建会话。
 3. 工具返回 clarify 时，原样给候选与置信度；用户自定义时以用户选择为准。
 4. 看板可自主维护；用户改动以注入消息为准。
 5. 审批/提问不属于你的上下文。

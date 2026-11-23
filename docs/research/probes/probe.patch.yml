@@ -1,0 +1,8 @@
+# scout 探针覆盖层（--patch 叠加在 profile 层之后）
+# 只插入一个观察插件；不改任何既有行。
+- insert:
+    - id: scout-probe
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/docs/research/probes/probe-plugin.mjs'
+      config:
+        out: /tmp/dsh-commander-probe/evidence/plugin-boot.json
+        deadlineMs: 8000

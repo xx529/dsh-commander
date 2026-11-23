@@ -1,0 +1,6 @@
+# M0-2 形状验证覆盖层：在隔离 profile 上临时注册一个工作区（仅测试用，不写 live）
+- insert:
+    - id: m0-workspace-fixture
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/dev/spike/m0-workspace-fixture.mjs'
+      config:
+        path: /tmp/dsh-commander-m0-api/ws-m0

@@ -1,0 +1,42 @@
+{
+  "at": "2026-11-17T08:25:25.366Z",
+  "pid": 14459,
+  "node": "v24.19.0",
+  "dshHome": "/tmp/dsh-commander-probe/home",
+  "cwd": "/Users/lzx/Documents/GitHub/dsh-commander",
+  "envBools": {
+    "TYPESAFE_API_KEY": false,
+    "JEV_API_KEY": false
+  },
+  "envKeysSample": [
+    "DSH_AGENTS_HOME",
+    "DSH_HOME",
+    "DSH_INSTALL_DIR",
+    "DSH_NODE_EXECUTABLE",
+    "DSH_PROFILE",
+    "DSH_PROFILE_DIR",
+    "DSH_SESSION_ID",
+    "DSH_SHELL",
+    "DSH_USER_AGENT_SUFFIX",
+    "DSH_WEB_URL"
+  ],
+  "services": {
+    "capabilityPanelRaw": "undefined",
+    "capabilityPanelIsFactory": false,
+    "capabilityPanel": "undefined",
+    "skills": "object",
+    "agents": "object",
+    "sessionController": "object",
+    "storageDomain": "object",
+    "workspaceRegistry": "object",
+    "webServer": "object",
+    "loader": "object",
+    "cmdlineArgs": "object",
+    "appExit": "function",
+    "profileContext": "object"
+  },
+  "panel": {
+    "present": false
+  },
+  "panelWaitMs": 8055
+}

@@ -1,0 +1,143 @@
+{
+  "frozenAt": "2026-11-17T09:07:00.386Z",
+  "casesFile": "docs/eval/frozen/cases.real.v2.jsonl",
+  "caseSha256": "872cb12d7c557db905f441542be05479d2017d3710fb5c2c4e9d70038fc7aad6",
+  "generator": "tools/eval/build-cases.mjs",
+  "generatorRev": "0db97fbd8da1a3ca",
+  "generatorSha256": "0db97fbd8da1a3cac9082cd6de7f192e69a2d08fdb7f41b18de30c714612b8e3",
+  "auditScript": "tools/eval/audit-cases.mjs",
+  "auditScriptRev": "8ef3bb231effa2f6",
+  "harness": "tools/jev-eval.mjs",
+  "harnessRev": "87c32cde266549ab",
+  "seed": "v5",
+  "summaryMode": "semantic",
+  "snapshotSpec": "v2-asof-dispatch (sessions/title/workspaces filtered by dispatchAt=message.time; title from pre-dispatch session/title event or first pre-dispatch user message)",
+  "dispatchTime": {
+    "min": "2026-10-08T11:21:08.533Z",
+    "max": "2026-11-17T09:06:35.059Z"
+  },
+  "cases": 50,
+  "layerCounts": {
+    "obvious": 12,
+    "should-ask": 5,
+    "old-session": 10,
+    "new-session": 6,
+    "capability": 5,
+    "ambiguous": 12
+  },
+  "leakViolations": 0,
+  "notes": [
+    "冻结后所有复跑/审计只读本副本；live 前 audit-cases.mjs 必须 violations=0。",
+    "v1 按 lead 裁定方法学不成立，仅作无效基线。"
+  ],
+  "harnessSha256": "1b35b1dfdcf9a0d75ceea4b02e1c609eb98d434f2021d8c6aece6a86383df36b",
+  "auditResult": {
+    "file": "docs/validation/v5-audit-cases.json",
+    "pass": true,
+    "violations": 0,
+    "warnings": 4,
+    "a4Policy": "违规=标题全文 / ≥8 连续 CJK 片段 / oracle 字段；通用技术词（latin 片段）仅 warning",
+    "coverageGaps": [
+      "A9 语义（attach 期望会话的语义正确性）",
+      "A5/A11 as-of 标题重算（由 tester 补检）",
+      "工作区摘要派生性断言（由 tester 补检）"
+    ]
+  },
+  "liveRuns": {
+    "layered": {
+      "report": "docs/eval/report-v2-layered.md",
+      "summary": "docs/eval/summary-v2-layered.json",
+      "exitCode": 1
+    },
+    "whitelistReality": {
+      "report": "docs/eval/report-v2-whitelist-layered.md",
+      "summary": "docs/eval/summary-v2-whitelist-layered.json",
+      "exitCode": 1
+    },
+    "fullSkipErrors": {
+      "report": "docs/eval/report-v2-full.md",
+      "summary": "docs/eval/summary-v2-full.json",
+      "exitCode": 1,
+      "errors": 29
+    }
+  },
+  "v1Baseline": {
+    "note": "v1 方法学不成立（lead 裁定），仅作无效基线；v1 案例行无 _meta/_provenance 字段（dispatchTime 只存在于 labels 头部与生成日志）",
+    "casesFile": "docs/eval/frozen/cases.real.v1.jsonl",
+    "caseSha256": "3c588014746775f4ee52f0b679947178673d7b0237ad72c047df0117830ee966",
+    "bytes": 3129467,
+    "lines": 50,
+    "labelsFile": "docs/eval/frozen/labels.cases.v1.md",
+    "labelsSha256": "5f2d3158988d750614b23fe3b98aafdba1769f73a2037266c7d517b515180bbf",
+    "dispatchTime": "2026-11-17T08:46:50.014Z",
+    "hasMeta": false,
+    "datasetAudit": "docs/validation/audit-V5-labels.md",
+    "datasetAuditSha256": "d4503b0c852550bbca60f4873b547721ce145fb7c8b4e228ceb622f37604d46a"
+  },
+  "auditScriptSha256": "68713b2fbe9d651e2ea5a9f7ecc1e06f4932ce218a94a72fcde6dccb73fffba6",
+  "testerAudit": {
+    "capturedAt": "2026-11-17T09:31:10.091Z",
+    "note": "scriptSha256 为本次刷新时点实际文件 sha（tester 于 2026-11-17 17:27 更新脚本）；v1 审计与时点快照见 audit 文档。",
+    "v2Audit": {
+      "file": "docs/validation/audit-V5-v2.md",
+      "sha256": "849a6da533add7164a51a42084f7cb6b60846a6a60feed0fe3756cc11bbc3abf"
+    },
+    "v2PostfixAudit": {
+      "file": "docs/validation/audit-V5-v2-postfix.md",
+      "sha256": "a13c2f1467ec070b8f051de56daad4eeda47fa5c6ccd2e369aa460e92b92e1f9"
+    },
+    "script": "tests/v5-audit/audit-v2.mjs",
+    "scriptSha256": "f8859bc5ae32369150a63ec9372defaf794e4c9e7d9865807b7ba8bcb05b788b",
+    "result": "tests/v5-audit/audit-v2-result.json",
+    "resultSha256": "23c7176405a50415468c30190abfa37836cf358a076ddfe008300be9b3899605",
+    "conclusion": "PASS（FAIL 依据可复现；HIGH=0；task-15 修复闭环，仅生成器漂移已注记）",
+    "independentRerun": {
+      "gateN": 28,
+      "workspaceTop1": 0.143,
+      "sessionTop1Top1Note": "attach",
+      "sessionTop1Attach": 0.056,
+      "modeAccuracy": 0.536,
+      "targetCorrect": 0.071,
+      "perCaseTargetMatches": "49/50"
+    },
+    "repairReview": "task-14 修复项复核：A4 ✅ / C6 分母 ✅ / dispatchAt ✅ / 0444 ✅；报告头字段本轮 task-15 补齐；testerAudit sha 时点快照见上。",
+    "capturedNote": "scriptSha256/resultSha256 为本次刷新时点实际 sha；tester 于 task-15 复核后更新脚本（F4/F10 检查逻辑），历史时点见 audit 文档。",
+    "v2Postfix2Audit": {
+      "file": "docs/validation/audit-V5-v2-postfix2.md",
+      "sha256": "7f567f92d64967dff81ab978ed17036fffdd1d4860dc88f7cf2fb2ea5b9c34a1"
+    }
+  },
+  "evidenceFiles": {
+    "report-v2-layered.md": "635ebecaf985001e17db23efa78df2cb481ae7e3012688012ac37094df1de87b",
+    "summary-v2-layered.json": "50b7f0af3ecb856d3101a0f82dc1b15e9cadd6929d2b4d5e3cc61af2d1d5b9ab",
+    "report-v2-whitelist-layered.md": "d7339af5c679ef0039126ae1d2da0ce79fa337d3a97ffd1040cf5ce96c3d731e",
+    "summary-v2-whitelist-layered.json": "fc0711e3d096d63397a7f2ce25162595b2c42867075f42929c7b37f699238e56",
+    "report-v2-full.md": "ffd17df5bf738c627c2a45cd73e82c6f53caf9c372dbd1c2bc2c9aa5595a9816",
+    "summary-v2-full.json": "28650c0945f8258fac9bb9456886c25bc2b782b2da75daaf3c617cdc641c567b",
+    "report-v2.md": "7e4df8d3cdc1aea6e9fce13f196832275cddd8d73e95b3e53fa3232ada7e48a6",
+    "labels.v2.md": "97b10c8959b8cafd090b0c3f4c10e470d8e60913c482990144478aeb4b247c78",
+    "labels.cases.v2.md": "e3ae2dfd7461a0c2f717a6d8c0b602223c2224b0843f7b0fe07aa690f8b417af",
+    "v5-audit-cases.json": "077fb4431e23d312cd46dba6d51db318a7860f80a31b392e383857a8a0e569e9",
+    "audit-V5-v2.md": "849a6da533add7164a51a42084f7cb6b60846a6a60feed0fe3756cc11bbc3abf",
+    "audit-V5-v2-postfix.md": "a13c2f1467ec070b8f051de56daad4eeda47fa5c6ccd2e369aa460e92b92e1f9",
+    "v5-jev-dispatch.md": "1a90cada6d60d93b4abebb13edcd00a1f666c415f91a410a336f2983e9d1b57f",
+    "audit-V5-v2-postfix2.md": "7f567f92d64967dff81ab978ed17036fffdd1d4860dc88f7cf2fb2ea5b9c34a1"
+  },
+  "metricDenominatorNote": "C6 coverage=served/labeled（layered 45 / whitelist 40 / full 19；named-cue 计入、observational 不计）；C2 分母 non-named-cue 实际 n=28/26/10；报告由已存 live summary 离线重算（--replay-summary），未重跑 live。",
+  "knownDeviations": [
+    "12/50 非 old-session 案例 dispatchAt 晚于被测消息（实现口径=会话最后一条 ≥12 字用户消息），偏利好模型；重开门须按被测消息时间重新冻结（新 sha，不覆盖 v2）。",
+    "v5-04-obvious 快照含同标题兄弟会话（历史重复任务，非源会话）。",
+    "A4 口径按 architect 裁定：通用技术词 latin 片段仅 warning（4 处），不计违规。",
+    "labels.cases.v2.md 已修正 undefined/12 渲染（task-15）。",
+    "三份 report-v2-*.md 头已补 dispatchTime/violations（protocol §6.2A.4；--replay-summary 复用原 live summary，未重跑 live）。"
+  ],
+  "generatorSha256AtFreeze": "0db97fbd8da1a3cac9082cd6de7f192e69a2d08fdb7f41b18de30c714612b8e3",
+  "generatorSha256Current": "f5817aeb76368c30a1262508bb5ee3f72791a8bbe5aec22406ab37f86ea15744",
+  "generatorDriftNote": "cases 由 Frozen 版本生成；Current 仅反映脚本后续修复（task-14/15：C6 分母/报告头/labels 模板等），不影响 frozen 字节。协议 §6.2A 生成器可复现性以 generatorSha256Frozen + caseSha256 为准。",
+  "generatorSha256Frozen": "0db97fbd8da1a3cac9082cd6de7f192e69a2d08fdb7f41b18de30c714612b8e3",
+  "harnessSha256Frozen": "87c32cde266549ab03be9d64b45b6aacace57994d08073cfd5385ea97496a079",
+  "harnessSha256Current": "1b35b1dfdcf9a0d75ceea4b02e1c609eb98d434f2021d8c6aece6a86383df36b",
+  "auditScriptSha256Frozen": "8ef3bb231effa2f691ba114cc88ced31a2e6e9ad1a0a5ef4020caa216c41b1ac",
+  "auditScriptSha256Current": "68713b2fbe9d651e2ea5a9f7ecc1e06f4932ce218a94a72fcde6dccb73fffba6",
+  "scriptShaDriftNote": "harness/audit 脚本在冻结后有工具级修复（task-14：C6 分母/--replay-summary/报告头；audit A4 对齐、A4b warning），因此当前 sha 与冻结时不同；冻结时报告/审计 JSON 由 Frozen 版本产出，Current 仅用于后续复跑工具。旧字段 generatorSha256/harnessSha256/auditScriptSha256 保持向后兼容：generatorSha256=冻结时；harnessSha256/auditScriptSha256 为上一版时点值（已被 *Current 覆盖语义取代，见双哈希字段）。"
+}

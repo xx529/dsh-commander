@@ -3,6 +3,7 @@
 > 版本：v2.4　日期：2026-11-17
 > 对应产品设计：`docs/PRODUCT-DESIGN.md` v1.4
 > v2.4 修正：能力选择完全调用能力面板的 capabilityPanel.jev.rank/apply；不再自建目录、范围或 Resolver。
+> v2.4 平台契约修正（2026-11-17）：存储表名 `boardEdits`→`board_edits`（DSH per-record 表名须匹配 `/^[a-z][a-z0-9_]*$/`，V4 实测见 `docs/validation/v4-storage-domain.md`）；键 `editId`、`BoardEditRecord` 字段、layout/version/语义全部不变。
 > v2.2 修正：能力策略收敛为两档；指挥官只提需求建议；能力选择由能力面板负责，派发 Jev 不参与。
 > v2.1 修正：能力目录不再单独暴露工具；Jev 改为全量覆盖优先、两层兜底；补疑似停滞徽标与 50 案例评估门禁。
 > v2.0 修正：去掉结果轮询与任务投影；只注入工作会话停止前的最后回复；指挥官按普通对话 + prompt 约束运行。
@@ -33,7 +34,7 @@ flowchart TB
 
   subgraph Host["DSH Host 进程（Host 插件：commander）"]
     CS["指挥官会话<br/>普通对话 + prompt 约束"]
-    TR["Tool Registry<br/>task_* / dispatch_task / organize_report"]
+    TR["Tool Registry<br/>commander_task_*"]
     DS["Dispatch Service<br/>全量候选 + Jev + 门控 + 建会话"]
     JC["Jev Client<br/>HTTP + 重试 + 缓存"]
     TB["Trigger Bridge<br/>turn/end → 最后回复注入"]
@@ -98,9 +99,9 @@ sequenceDiagram
   U->>CS: 一条消息（可以是命令、追问、闲聊）
   CS->>CS: 按 system prompt 判断：要不要建任务/派发/回答
   alt 需要任务
-    CS->>H: task_create(...)
+    CS->>H: commander_task_create(...)
     H->>B: 写 task 记录
-    CS->>H: dispatch_task(taskId, candidate)
+    CS->>H: commander_task_dispatch(taskId, candidate)
     H-->>CS: dispatched / needs_confirmation / rejected
     CS-->>U: 正常回复（做了什么、卡在哪、要你确认什么）
   else 只是问答
@@ -126,7 +127,7 @@ sequenceDiagram
   H->>H: 去重（sessionId + turnId + lastSeq）
   H->>CS: prompt("[session-reply] <最后回复原文>")
   CS->>CS: 读这条回复，决定怎么回
-  CS->>H: 需要时调用 task_update / organize_report
+  CS->>H: 需要时调用 commander_task_update / commander_task_report
   H->>B: 更新任务状态/验收/证据
   CS-->>H: 给用户的回复
   CS-->>U: 回复（面板展示，普通对话消息）
@@ -151,7 +152,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A["指挥官模型决定调用 dispatch_task"] --> B["Host 校验<br/>任务状态 / 工作区白名单 / 会话归属"]
+  A["指挥官模型决定调用 commander_task_dispatch"] --> B["Host 校验<br/>任务状态 / 工作区白名单 / 会话归属"]
   B -->|不合法| E["rejected(code,message)"]
   B --> C["构造候选<br/>全部允许工作区 + 全部非归档会话"]
   C --> D["调 Jev choice"]
@@ -162,7 +163,7 @@ flowchart TD
   I -->|是| J["创建/复用会话 + 写 brief"]
   I -->|否| K["needs_confirmation<br/>候选+概率+理由"]
   K --> L["指挥官在对话里问用户"]
-  L -->|用户回复| M["再次调用 dispatch_task<br/>带 decisionId + confirmTarget"]
+  L -->|用户回复| M["再次调用 commander_task_dispatch<br/>带 decisionId + confirmTarget"]
   M --> J
   J --> O["写 dispatch + task=queued"]
   H --> O
@@ -200,7 +201,7 @@ export const commanderDomain = defineDomain({
     commands:   domainTable(CommandRecordSchema),
     tasks:      domainTable(TaskRecordSchema),
     dispatches: domainTable(DispatchRecordSchema),
-    boardEdits: domainTable(BoardEditRecordSchema),
+    board_edits: domainTable(BoardEditRecordSchema),
     sessions:   domainTable(SessionLinkRecordSchema),
   },
 })
@@ -213,8 +214,12 @@ export const commanderDomain = defineDomain({
 | `commands` | `commandId` | 用户原话、会话、seq | 与任务同寿命 |
 | `tasks` | `taskId` | **权威任务记录**（状态 + 有界时间线） | 归档后 90 天 |
 | `dispatches` | `decisionId` | 候选、Jev 输出、最终选择 | 1 年 |
-| `boardEdits` | `editId` | 人工改动 + 注入状态 | 90 天 |
+| `board_edits` | `editId` | 人工改动 + 注入状态 | 90 天 |
 | `sessions` | `<workspaceId>__<sessionId>` | 会话↔任务↔角色、最后注入点 | 与任务同寿命 |
+
+> **表名平台契约**：per-record 表名必须匹配 `/^[a-z][a-z0-9_]*$/`，因此第 6 张表为 `board_edits`（接口名仍为 `BoardEditRecord`）。本行是对冻结表名 `boardEdits` 的最小平台适配，Lead 2026-11-17 裁定；证据 `docs/validation/v4-storage-domain.md`。
+
+> **R1（2026-11-19，加法式）**：`sessions` 记录增加 `status='retired'`、可选 `generation/retiredAt`；被轮换退役的指挥官会话**保留记录与会话**，不自动归档、不删除，可用 `mode:'select'` 绑回。契约见 `docs/architecture/rotation-contract-patch.md`。
 
 **没有 `taskEvents` 表，也没有投影。** 时间线是任务记录里的一个数组，最多 100 条，超过后折叠为摘要；这是展示与审计，不是重建来源。
 
@@ -229,6 +234,14 @@ interface ConfigRecord {
     sessionId: string
     model: { provider: string; model: string; reasoningEffort?: string }
     agentPreset?: string
+    // R1（2026-11-19，加法式）：会话轮换；缺省 = 关闭，行为同历史版本
+    rotation?: {
+      enabled: boolean          // 默认 false；关闭时唯一路径是手动「绑定到新会话」，且不生成交接简报
+      periodDays: number        // 1..7，默认 1（纯时间差，无定时器）
+      includeUserTail: boolean  // 简报是否含用户最近原话，默认 true
+      generation?: number       // 当前第几任，默认 1
+      generationStartedAt?: number // 本任开始时间（ms）
+    }
   }
   jev: {
     provider: 'typesafe' | 'custom'
@@ -236,13 +249,14 @@ interface ConfigRecord {
     model: string                     // 默认 jev-latest
     keySource: 'env' | 'credential'
     envVar: string                    // 默认 JEV_API_KEY
-    threshold: number                 // pMax 阈值，默认 0.80
-    confidenceFloor: number           // concentration 下限，默认 0.50
+    workspaceThreshold: number        // pWorkspace 阈值，默认 0.80
+    sessionThreshold: number          // pSession 阈值，默认 0.80
+    autoDispatch?: boolean            // 两段都过阈值时自动派发（默认 false）
     timeoutMs: number                 // 默认 1500
     onTimeout: 'pause_and_ask' | 'use_model'
   }
   board: { archiveAfterDays: number; syncUserEdits: boolean }
-  ui: { theme: 'follow'|'light'|'dark'; entryPosition: 'br'|'bl'; hotkey: string }
+  ui: { theme: 'follow'|'light'|'dark'; entryPosition: 'br'|'bl'; entryEnabled?: boolean; entryPos?: {x:number;y:number}|null; hotkey: string }
   updatedAt: number
 }
 
@@ -299,6 +313,9 @@ interface TaskRecord {
   capabilities?: CapabilityPlan
   progress?: { label: string; pct?: number; at: number }
   block?: { reason: string; code?: string; since: number }
+  dependsOn?: string[]               // 依赖任务 id，≤5，无环；全部 done（或 done→archived）才可派发
+  dependencyNotifiedAt?: number      // 最近一次成功投递 [task-unblocked] 的时间（仅提醒去重）
+  archivedFrom?: TaskStatus          // archive 时的原状态；restore 按它回退
   timeline: TaskTimelineItem[]       // 有界，≤100
   version: number                    // 乐观并发
   createdAt: number
@@ -370,7 +387,9 @@ interface SessionLinkRecord {
   mode: 'new'|'attach'
   createdAt: number
   lastInjected?: { turnId: string; seq: number; at: number }  // 去重
-  status: 'queued'|'running'|'idle'|'missing'
+  status: 'queued'|'running'|'idle'|'missing'|'retired'      // R1：retired = 被轮换退役（会话保留，可绑回）；missing = 会话不可恢复
+  generation?: number                                        // R1：仅 role='commander'；第几任
+  retiredAt?: number                                         // R1：仅 retired 记录
 }
 
 interface BoardEditRecord {
@@ -412,22 +431,38 @@ interface BoardEditRecord {
 
 | 工具 | 作用 | 写盘 |
 |---|---|---|
-| `task_create` | 建任务草稿 | 是 |
-| `task_update` | 改状态/字段/进度/验收 | 是 |
-| `task_cancel` | 取消 | 是 |
-| `task_archive` | 归档 | 是 |
-| `dispatch_task` | 全量候选 + 能力解析 + Jev + 门控 + 建会话；也用于确认 | 是 |
-| `organize_report` | 把最后回复整理成验收与证据 | 是 |
-| `follow_up` | 向工作会话追问补证 | 否 |
-| `board_query` | 查看看板 | 否 |
+| `commander_task_create` | 建任务草稿；可带 `dependsOn` | 是 |
+| `commander_task_get` | 取单条最新任务（version/status/ready/waitingFor/block/pendingDispatch） | 否 |
+| `commander_task_update` | action enum：`edit/set_dependencies/block/cancel/recover`；必带 `expectedRevision` | 是 |
+| `commander_task_dispatch` | 全量候选 + 能力解析 + Jev + 门控 + 建会话；也用于确认/续派 | 是 |
+| `commander_task_report` | 把最后回复整理成验收与证据（进入 review 的唯一正常入口） | 是 |
+| `commander_task_list` | 查看看板（每行带 version/ready） | 否 |
 
 **已删除 `brief_user`**：指挥官的普通回复就是播报；界面根据任务状态与新消息决定是否提醒，不需要一个单独的"播报工具"。
 
-### 4.1 `dispatch_task`
+### 4.0 状态机与统一迁移入口（定案 v1.0）
+
+状态枚举仍为 9 个：`draft/proposed/queued/running/blocked/review/done/cancelled/archived`。看板六列只做显示合并，不新增状态；`done/archived` 只能走人专用路由。所有任务状态写入必须经过 `src/host/tasks/state-machine.ts` 的唯一迁移入口（迁移图 + actor 权限 + 守卫 + 副作用），不允许各写入口自行 `if`。
+
+| From → To | 唯一入口 | 守卫 |
+|---|---|---|
+| `draft→proposed/queued`、`proposed→queued`、`review→queued` | `commander_task_dispatch` | pending/依赖；queued 需 primarySessionId |
+| `queued/blocked→running` | `turn/start`（及 blocked 的 recover/report） | queue/阻塞守卫 |
+| `queued/running/blocked→review` | `commander_task_report`（blocked 也可 recover） | acceptance≥1 |
+| `draft/proposed/queued/running→blocked` | dispatch spawn 失败 / `commander_task_update(action=block)` | reason 必填 |
+| `blocked→proposed` | `commander_task_update(action=recover)` | 仅 round 1 且无验收历史 |
+| `review→done` | `POST /accept`（人） | 幂等 |
+| `→cancelled` | `commander_task_update(action=cancel)` / `POST /cancel` | 先停会话，失败不落状态 |
+| `review/done/cancelled→archived` | `POST /archive`（人） | 写 `archivedFrom` |
+| `archived→archivedFrom` | `POST /restore`（人） | 清 archivedAt/pending/依赖提醒标记 |
+
+依赖：`commander_task_create`/`set_dependencies` 校验 `dependsOn`（≤5、无自依赖/重复/环、不得指向 cancelled 或非 done 归档）；`ready` 只对 `draft/proposed` 有意义；dispatch 用 `dependenciesMet`（不是 ready）做前置检查。accept 首次成功后只提醒 commander（`[task-unblocked]`，一次一条），cancel/review 来源 archive 后提醒 `[task-dependency-blocked]`；Host 不自动派发、不自动改后继状态。
+
+### 4.1 `commander_task_dispatch`
 
 ```json
 {
-  "name": "dispatch_task",
+  "name": "commander_task_dispatch",
   "parameters": {
     "taskId": { "type": "string", "required": true },
     "candidate": {
@@ -487,11 +522,11 @@ interface BoardEditRecord {
 - 用户回复后，指挥官再调一次，带 `decisionId + confirmTarget`（或原 candidate）完成派发。
 - 幂等：`requestId`；同一 decision 只能提交一次。
 
-### 4.2 `organize_report`
+### 4.2 `commander_task_report`
 
 ```json
 {
-  "name": "organize_report",
+  "name": "commander_task_report",
   "parameters": {
     "taskId": { "type": "string", "required": true },
     "sessionId": { "type": "string", "required": true },
@@ -507,7 +542,7 @@ interface BoardEditRecord {
         "derivedFromSeq": { "type": "number" }
       }
     }},
-    "summary": { "type": "string", "description": "≤800 字，来自最后回复" }
+    "summary": { "type": "string", "required": true, "description": "≤800 字；指挥官对工作会话最后回复的归纳（Host 原文落库，不核对来源）" }
   },
   "output": {
     "schema": {
@@ -524,8 +559,9 @@ interface BoardEditRecord {
 ```
 
 - 校验证据 seq 落在区间内；不评估达标。
-- 写任务记录：acceptance、timeline、status=review（或 blocked）。
-- 不强制调用；指挥官可以根据最后回复决定先 `task_update` 还是直接 `organize_report`。
+- 写任务记录：acceptance、timeline、status=review（或 blocked）、`reportSummary={text,at}`（指挥官归纳的 summary 原文 + 本次整理时间；≤800 字，Host 不核对来源）。
+- `reportSummary` 由任务详情接口（`GET /commander/tasks/:id`）透出，看板抽屉的「整理报告」行以**「结论」卡**展示 summary 正文（4 行折叠、可展开，强调色用 DSH 深蓝，不复用证据状态的语义绿）；空 summary 不落库、不展示。
+- 不强制调用；指挥官可以根据最后回复决定先 `commander_task_update` 还是直接 `commander_task_report`。
 
 ### 4.3 能力选择：两种策略，执行完全交给能力面板
 
@@ -563,22 +599,25 @@ interface BoardEditRecord {
 
 ### 4.4 其他工具
 
-- `task_create`：`title/goal/workspaceId/priority/commandId` → `{taskId,status:"draft"}`。
-- `task_update`：允许 `priority/progress/blockReason/title/status`（状态受状态机约束）。
-- `task_cancel` / `task_archive`。
-- `board_query`：返回 ≤30 条摘要。
-- `follow_up`：向工作会话发一条补证/追问；每任务 15 分钟最多 1 次。
+- `commander_task_create`：`title/goal/workspaceId?/priority?/commandId?/dependsOn?` → `{taskId,status:"draft",version,dependsOn,waitingFor,ready}`。
+- `commander_task_get`：`taskId` → `{id,version,title,status,round,workspaceId,priority,dependsOn,waitingFor,ready,primarySessionId?,block?,pendingDispatch,acceptanceCount,evidenceInsufficientCount,updatedAt}`；**任何 `commander_task_update` 前先取 version**。
+- `commander_task_update`：`taskId + expectedRevision + action`；`status` 参数已删除。action 严格收字段：`edit`（title/priority/progress）、`set_dependencies`（dependsOn）、`block`（reason）、`cancel`、`recover`（recoverTo）。stale revision → `task_stale_revision`，不落盘。
+- `commander_task_list`：返回 ≤30 条摘要（含 version/ready/dependsOn/waitingFor）。
+- 一律不提供 `follow_up`/`task_cancel`/`task_archive` 这类不存在的工具；取消/归档/恢复/验收是人专用 HTTP 路由。
 
 ### 4.5 人专用操作（不给模型）
 
 | Method + Path | 用途 |
 |---|---|
-| `POST /commander/tasks/:id/accept` | 唯一验收入口 |
-| `POST /commander/tasks/:id/rework` | 返工并生成续做 brief |
-| `PATCH /commander/board/tasks/:id` | 人工改看板；异步注入指挥官 |
+| `POST /commander/tasks/:id/accept` | 唯一验收入口（`review→done`，幂等） |
+| `POST /commander/tasks/:id/archive` | `review/done/cancelled→archived`，写 `archivedFrom` |
+| `POST /commander/tasks/:id/restore` | `archived→archivedFrom`（缺省回 draft） |
+| `POST /commander/tasks/:id/cancel` | 非终态→cancelled；先停 running/queued 会话，失败不落状态 |
+| `POST /commander/tasks/:id/continue` | 看板继续派发请求（只写批注并通知指挥官；`/rework` 兼容别名） |
+| `PATCH /commander/board/tasks/:id` | **只允许 priority/title**；`status` 一律 400/409 |
 | `GET /commander/state` | 看板/面板 SSE |
 
-派发确认不需要专门路由：Client 把用户的选择作为一条普通消息发给指挥官，指挥官再次调用 `dispatch_task`。
+派发确认不需要专门路由：Client 把用户的选择作为一条普通消息发给指挥官，指挥官再次调用 `commander_task_dispatch`。
 
 ---
 
@@ -588,71 +627,87 @@ interface BoardEditRecord {
 
 - `POST https://api.typesafe.ai/v1/systemone`，`model: jev-latest`。
 - 超时 1500ms；`429/529` 退避重试 1 次；`4xx` 不重试。
-- 请求体优先包含**全部允许工作区 + 全部非归档会话**（预算内）；超出预算才分层。
+- **每次派发固定两次调用**：第 1 段只问工作区，第 2 段只问所选工作区内的会话。不按 token 预算切换"一次双问 / 两层"（v2.5 修正，2026-11-19）。
 
-### 5.2 候选构造：先全量，后分层
+### 5.2 两段固定结构（v2.5）
 
-**不做召回式预筛**。不按 30 天、Top-K、词面分数提前砍候选；相关任务可能来自几周前，这是常态。
+类型约定按 TypeSafe 的语义：**`state` 只放被判断的对象**（用户请求 + 转写需求），**候选与其描述放 `criteria`**。两段共用同一个 `state`。
 
-```
-allowedWorkspaces = 所有 allowed === true 的工作区（≤20）
-sessions = 所有非归档会话（包含数周前；按 lastActiveAt 倒序描述）
-```
+**第 1 段：工作区**
 
-**模式 A：全量一波（优先）**
+- 候选：所有 `allowed === true` 的工作区（≤100；未配置 `allowed` 的不进候选）
+- `state`：`task {title, goal, acceptanceHints?, priority?}` + `command {text, workspaceHint?}`
+- `criteria`：`w_i → {name, path, what, recentSessionTitles[≤10]}`
+  - `what` 取工作区描述，空则 `"未配置摘要"`
+  - `recentSessionTitles` 取该工作区最近活动的会话标题（排除指挥官自身、子会话、归档会话）
+  - `path` 是身份信号（remote 镜像 / `.dsh` 本机环境 / 同名父子目录），必须进 criteria
 
-估算 `state + questions` 的 token 数（JSON 字符数 / 3 的近似）。若 ≤ 24k（默认预算，低于 32k 单问题上限）：
+**第 2 段：所选工作区内的会话**
 
-- 一个问题问工作区：`workspace` choice，选项 = 所有 allowed 工作区（≤20），描述含摘要与最近任务；
-- 一个问题问会话：`session` choice，选项 = 所有会话 + `new`；**会话详情只放 `state.sessions`，criteria 用 id/短标签，避免同一段文本重复计 token**；
-- 一次请求问完，利用 Jev "多问题并行"的建议。
+- 候选：该工作区非归档会话（排除指挥官自身、子会话）+ `new`，按 `lastActiveAt` 倒序，**最多 250 个**（Choice 上限 255；截断时 `prefilter.truncated = true`）
+- `state`：同第 1 段（**不含候选**）
+- `criteria`：`new → {what:"新建会话"}`；`s_i → {what: title, lastActiveAt?, contextUsage?, userQuestions?}`
+  - `userQuestions` = 该会话的**用户提问**（按时间序；只取真实用户输入，过滤 `<system-reminder>`/运行时快照/子 agent 消息等注入）
+  - 条数：每会话最多 20 条；超过 20 条时**首条与末条必留**，中间按提问长度降序取 18 条（输出仍按时间序）
+  - 限额：每条 ≤240 字、每会话 ≤1200 字、总量 ≤45k 字符、最多为最近 60 个候选读取；超出的候选只带标题（仍是合法选项）
+  - 字符截断时同样**优先保留首条与末条**，中间条目按时间序用剩余预算填充
 
-**模式 B：两层（超出预算时）**
+**答案合并**
 
-1. 第一问：`workspace` choice，全部 allowed 工作区；
-2. 第二问：`session` choice，**所选工作区的全部非归档会话** + `new`，不做 Top-K；
+- 工作区 `choice` 按 `wIndex` 回真实 id；会话 `choice` 按 `sIndex` 回真实 id；`new` → `mode='new'`
+- 第二段只在所选工作区内选，所以 attach 会话必属该工作区（确认路径仍校验归属与归档）
 
-**一致性校验**
+### 5.3 请求示例（两段，节选）
 
-- 模式 A 的 `workspace` 与 `session` 是两个独立问题，Jev 看不到彼此答案；
-- 代码校验 `chosenSession.workspaceId === chosenWorkspace`：
-  - 一致 → 直接用；
-  - 不一致 → 追加一次小请求，只给 2–3 个组合候选（会话所属工作区 + 新会话 / 原工作区 + 新会话），由 Jev 或用户定；
-  - 仍然冲突 → `needs_confirmation`。
-
-### 5.3 请求示例（全量一波，节选）
+第 1 段：工作区
 
 ```json
 {
   "model": "jev-latest",
   "state": {
-    "task": { "title": "...", "goal": "...", "acceptanceHints": ["..."], "priority": "high" },
-    "command": { "text": "...", "workspaceHint": "HtDot" },
-    "workspaces": [
-      { "id": "htdot", "name": "HtDot", "summary": "电商后台：订单、结算、导出链路",
-        "recentTasks": ["..."] }
-    ],
-    "sessions": [
-      { "id": "sess_8f31a2", "workspaceId": "htdot", "title": "订单导出 · 流式改造",
-        "lastActiveAt": "2026-11-16T17:21:00+08:00", "contextUsage": 0.78 }
-    ],
-    "constraints": { "allowedWorkspaces": ["htdot","mira","live"] }
+    "task": { "title": "导出任务断点续传", "goal": "订单导出中断后可继续", "priority": "high" },
+    "command": { "text": "订单导出断了能接着导吗", "workspaceHint": "HtDot" }
   },
   "questions": {
     "workspace": {
       "type": "choice",
-      "instructions": "哪个工作区最适合这个任务？综合考虑职责、历史任务与能力匹配。",
+      "instructions": "哪个工作区最适合承接这个任务？按职责、路径与最近会话标题选择。",
       "criteria": {
-        "htdot": { "what": "HtDot", "why": "...", "not_for": "..." },
-        "mira": { "what": "Mira", "why": "...", "not_for": "..." }
+        "w_0": {
+          "name": "HtDot",
+          "path": "/Users/lzx/Documents/GitHub/HtDot",
+          "what": "电商后台主站：订单列表、结算、导出、库存与促销活动",
+          "recentSessionTitles": ["订单导出改流式", "结算页性能优化"]
+        },
+        "w_1": {
+          "name": "Htdot-OrderCenter",
+          "path": "/Users/lzx/Documents/sunteng/Htdot-OrderCenter",
+          "what": "HtDot 订单中心前端：React 页面、订单详情交互与前端构建",
+          "recentSessionTitles": ["订单详情弹窗", "收货地址编辑"]
+        }
       }
-    },
+    }
+  }
+}
+```
+
+第 2 段：会话（`state` 与上段相同，仅 `criteria` 换成所选工作区会话）
+
+```json
+{
+  "model": "jev-latest",
+  "state": {
+    "task": { "title": "导出任务断点续传", "goal": "订单导出中断后可继续", "priority": "high" },
+    "command": { "text": "订单导出断了能接着导吗", "workspaceHint": "HtDot" }
+  },
+  "questions": {
     "session": {
       "type": "choice",
       "instructions": "该工作区里哪个会话最合适？没有合适的就选 new。",
       "criteria": {
-        "sess_8f31a2": { "what": "订单导出 · 流式改造", "why": "...", "not_for": "上下文 78%" },
-        "new": { "what": "新建会话", "why": "上下文干净" }
+        "new": { "what": "新建会话" },
+        "s_0": { "what": "订单导出改流式", "lastActiveAt": "2026-11-16T17:21:00+08:00" },
+        "s_1": { "what": "结算页性能优化", "lastActiveAt": "2026-11-14T09:03:00+08:00" }
       }
     }
   }
@@ -676,76 +731,90 @@ sessions = 所有非归档会话（包含数周前；按 lastActiveAt 倒序描�
 const pWorkspace = workspaceAnswer.probabilities[workspaceAnswer.choice]
 const pSession = sessionAnswer.probabilities[sessionAnswer.choice]
 const pass =
-  pWorkspace >= 0.80 &&
-  pSession >= 0.80 &&
-  workspaceAnswer.confidence >= 0.50 &&
-  sessionAnswer.confidence >= 0.50
+  pWorkspace >= workspaceThreshold &&
+  pSession >= sessionThreshold
 
-// 记录时：pMax = min(pWorkspace, pSession)，concentration = min(两问 confidence)
+// 记录时：pMax = min(pWorkspace, pSession)，concentration = min(两问 confidence)（仅记录，不参与门控）
 ```
 
 > 说明：问两个独立问题后，组合概率是乘积；如果按乘积设 0.8，几乎必然要人工确认。建议分别门控（工作区 0.8、会话 0.8），或对 `new` 只要求工作区门控。阈值用 50 案例校准（见 §8）。
+>
+> **自动派发（2026-11-19）**：`jev.autoDispatch` 开启且门控通过时直接派发（`outcome='auto'`），关闭时门控仅用于展示、首次恒 `needs_confirmation`（M1 全确认默认值仍为 `false`）。
 
-### 5.5 800 会话 / 20 工作区
+### 5.5 800 会话 / 20 工作区（两段式后）
 
 | 情况 | 处理 |
 |---|---|
-| 全部摘要 ≤24k tokens | **一波过**：20 个工作区 + 全部非归档会话 |
-| 超出预算 | 先问工作区（20 个选项），再问该工作区**全部**非归档会话 + new |
-| 800 会话摘要太大 | 每会话描述压到 ≤60 字符（工作区 · 标题 · 最近活动），标题截断；criteria 只放 id，详情放 state；仍超就两层 |
-| 会话很久以前 | **不排除**；只按 `lastActiveAt` 排序展示 |
+| 工作区 ≤100 | 全部 allowed 进第 1 段 criteria（Choice 上限 255） |
+| 工作区没有摘要 | `what="未配置摘要"`，仍进候选、不影响召回 |
+| 所选工作区会话 >250 | 按 `lastActiveAt` 取前 250，`prefilter.truncated=true` |
+| 提问证据预算 | 最近 60 个候选带用户提问，单条 ≤240 字、单会话 ≤1200 字、总量 ≤45k 字符；其余只带标题 |
+| 会话很久以前 | **不排除**；按 `lastActiveAt` 倒序展示（在 250 名额内） |
 | 归档会话 | 排除（可恢复后再派发） |
-| 工作区没有摘要 | 保留，描述里标记"未配置摘要"；不影响召回 |
-| 答案冲突 | 小请求复核 2–3 个组合，仍冲突交给人 |
+| 第 1 段失败 | `jev_unavailable`（默认 `pause_and_ask`）；不跳过工作区直接问会话 |
+| 答案一致性 | 第 2 段只含所选工作区会话，天然一致；不再需要"追加小请求复核" |
 
-**预算**：默认 24k tokens（Jev 单问题 32k 上限留余量）。可选长上下文 262k，但更慢且精度下降，默认关闭。
+**预算**：第 1 段通常 2–6k tokens；第 2 段按 250 会话 ×（标题 + 元数据）估算，仍远低于单段 32k 上限。长上下文 262k 仍默认关闭。
 
 ## 6. 任务状态机
 
-状态仍然需要，因为看板、验收、并发都依赖它；但**迁移由工具调用、人操作或会话事件触发，不由 Host 编排对话**。
+状态仍然需要，因为看板、验收、依赖都依赖它；但**迁移由工具调用、人操作或会话事件触发，不由 Host 编排对话**。唯一口径与完整矩阵见 `docs/architecture/task-state-machine-final.md` v1.0；实现入口 `src/host/tasks/state-machine.ts`。
 
 ```mermaid
 stateDiagram-v2
-  [*] --> draft: task_create
-  draft --> proposed: 可派发
-  draft --> cancelled: 取消
-  proposed --> queued: 派发提交
-  proposed --> cancelled: 取消
-  queued --> running: 回合开始
-  queued --> blocked: 投递失败
-  running --> blocked: 失败
-  running --> review: 完成
-  blocked --> running: 恢复
-  blocked --> review: 完成
-  blocked --> cancelled: 取消
-  review --> done: 用户通过
-  review --> running: 返工
-  done --> archived: 归档
-  cancelled --> archived: 归档
-  archived --> [*]
+  [*] --> draft: commander_task_create
+  draft --> proposed: dispatch 首次确认
+  draft --> queued: dispatch autoDispatch
+  proposed --> queued: dispatch 确认/自动
+  queued --> running: turn/start
+  queued --> review: report 先到
+  running --> review: commander_task_report
+  review --> queued: dispatch 续派
+  draft --> blocked: dispatch spawn 失败 / update block
+  proposed --> blocked: 同上
+  queued --> blocked: report blocked / update block
+  running --> blocked: report blocked / update block
+  review --> blocked: 续派 spawn 失败
+  blocked --> running: turn/start / recover / report no_progress
+  blocked --> review: report / recover(验收≥1)
+  blocked --> proposed: recover（仅 round 1）
+  review --> done: POST /accept（人）
+  draft --> cancelled: update cancel / POST /cancel
+  proposed --> cancelled: 同上
+  queued --> cancelled: 同上
+  running --> cancelled: 同上
+  blocked --> cancelled: 同上
+  review --> cancelled: 同上
+  review --> archived: POST /archive（人）
+  done --> archived: POST /archive（人）
+  cancelled --> archived: POST /archive（人）
+  archived --> draft: restore（无 archivedFrom/cancelled 来源）
+  archived --> review: restore（archivedFrom=review）
+  archived --> done: restore（archivedFrom=done）
 ```
 
 | 状态 | 看板列 | 进入方式 |
 |---|---|---|
-| draft | 待派发确认 | `task_create` |
-| proposed | 待派发确认 | `dispatch_task` 返回 needs_confirmation |
-| queued | 进行中 | 派发提交（会话创建 + brief 投递） |
-| running | 进行中 | Host 收到 `turn/start`（机械更新运行态，不注入对话） |
-| blocked | 受阻 | 投递失败、工具失败、会话丢失 |
-| review | 待验收 | 指挥官调用 `organize_report` |
-| done | 已完成 | 仅 `POST /accept` |
-| cancelled | 归档区 | 用户/指挥官取消 |
-| archived | 归档区 | 归档 |
+| draft | 待派发 | `commander_task_create` |
+| proposed | 待派发 | `commander_task_dispatch` 返回 needs_confirmation |
+| queued | 待运行 | 派发提交（会话创建 + brief 投递） |
+| running | 运行中 | Host 收到 `turn/start`（机械更新运行态，不注入对话） |
+| blocked | 受阻 | spawn/投递失败、report blocked、工具 block |
+| review | 待验收 | `commander_task_report`（delivered/partial，acceptance≥1） |
+| done | 已验收 | 仅 `POST /accept`（人） |
+| cancelled | 回收站 | 人/指挥官取消 |
+| archived | 回收站 | 仅 `POST /archive`（人） |
 
 **不变量**
 
-1. `done` 只能从 `review` 进入，且只能由人触发。
-2. `review` 至少 1 条 acceptance。
-3. 一个任务同一时刻一个主会话；改派新增 assignment。
-4. `dispatch` 提交后能力计划不可变。
-5. 审批/提问不写入任务记录。
-6. 状态迁移只更新任务记录一条；不写投影、不写事件表。
-7. **凡是通过工具改变了任务状态的指挥官回合，必须以一条用户可见的回复结束**（prompt 约束，不允许静默改板）。
+1. `done` 只能从 `review` 进入，且只能由人 accept；`archived` 只能由人 archive/restore。
+2. `review` 至少 1 条 acceptance；`queued` 必须有 primarySessionId；`blocked` 必须有 reason；`blocked→proposed` 仅 round 1 且无验收历史。
+3. 一个任务同一时刻一个当前轮主会话；改派新增 assignment；同一会话可被多个任务 attach。
+4. 所有状态写入经统一迁移入口；`commander_task_update` 只接受 action enum + `expectedRevision`，不接受裸 status。
+5. `dependsOn` ≤5、无环；dispatch 前置检查 `dependenciesMet`；accept/cancel/archive 只提醒 commander，Host 不自动派发、不自动改后继状态。
+6. 审批/提问不写入任务记录。
+7. 状态迁移只更新任务记录一条；不写投影、不写事件表。
+8. **凡是通过工具改变了任务状态的指挥官回合，必须以一条用户可见的回复结束**（prompt 约束，不允许静默改板）。
 
 ---
 
@@ -763,7 +832,7 @@ stateDiagram-v2
 | 会话创建/投递失败 | 任务回 proposed/blocked，不新建第二个会话 |
 | 能力应用失败 | 不启动会话，blocked(code=capability_apply_failed) |
 | 任务记录并发写 | version 冲突重试 3 次 |
-| 人工改动注入失败 | `boardEdits.injectedAt` 为空，启动补注入一次 |
+| 人工改动注入失败 | `board_edits.injectedAt` 为空，启动补注入一次 |
 
 观测：注入次数/去重数、注入到回复时延、Jev 时延/失败率、派发自动/确认比例、验收整理时延、任务记录冲突数。
 
@@ -795,7 +864,7 @@ stateDiagram-v2
 
 **工具**：`tools/jev-eval.mjs`（live / `--mock`、阈值扫描、Markdown 报告）；协议与分层见 `docs/eval/jev-dispatch-eval.md`；当前有 6 条示例，50 条真实快照需在开发前补齐。
 
-**全量覆盖模式也要测**：同一批案例分别用"全量一波"和"两层"跑，比较准确率与 token；若全量明显更准且 ≤24k，默认全量。
+**两段式要分开测**：工作区段与会话段各自算 Top-1（两段误差会相乘），并按段看 token 与 p50/p95；会话段在 250 候选截断前后各测一次（v2.5）。
 
 ---
 

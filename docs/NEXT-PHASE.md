@@ -114,7 +114,7 @@
 ### M1 · 派发（核心价值）
 
 范围：
-- `task_create` / `dispatch_task` / `task_update` / `board_query` 工具；
+- `commander_task_create` / `commander_task_dispatch` / `commander_task_update` / `commander_task_list` 工具；
 - Jev 客户端（TypeSafe `/v1/systemone`，env/凭据，超时/重试）；
 - 候选构造：全量优先（20 工作区 + 全部非归档会话），>24k 两层；
 - 门控：工作区/会话分别门控；`needs_confirmation` + 二次调用确认；
@@ -145,7 +145,7 @@
 
 范围：
 - `turn/end` 最后回复注入（去重、过滤 pending）；
-- `organize_report` 整理验收 + 证据；
+- `commander_task_report` 整理验收 + 证据；
 - 审批悬浮卡（含打开会话）；
 - 人专用 accept/rework 路由；
 - 播报/提醒（由消息与状态派生，无 brief_user）。
@@ -173,7 +173,7 @@ packages/dsh-commander/
 │   │   ├── index.ts        # apply/inject、domain open、capabilityPanel 软依赖
 │   │   ├── domain.ts       # defineDomain v1, per-record
 │   │   ├── store/          # task/workspace/command/dispatch/boardEdit/session 仓储
-│   │   ├── tools/          # task_* / dispatch_task / organize_report / follow_up / board_query
+│   │   ├── tools/          # task_* / commander_task_dispatch / commander_task_report / follow_up / commander_task_list
 │   │   ├── dispatch/       # 候选构造、门控、能力调用、会话创建
 │   │   ├── jev/            # 派发 Jev 客户端（与能力面板的 Jev 分离）
 │   │   ├── trigger/        # turn/end → 最后回复注入 + 去重

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 · 多轮任务详情 · 依据与材料</title>
+<meta name="description" content="dsh-commander 任务详情：多轮编年 + 报告结论的链接、文档、图片材料，支持来源标记、图片预览与验收项关联。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script>
+  (function () {
+    var p = new URLSearchParams(location.search);
+    var theme = p.get('theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+    if (p.get('expand') === '1') document.documentElement.dataset.expand = '1';
+    if (p.get('compose') === '1') document.documentElement.dataset.compose = '1';
+    if (p.get('solo') === '1') document.documentElement.dataset.solo = '1';
+    if (p.get('full') === '1') document.documentElement.dataset.full = '1';
+    if (p.get('materials') === 'all') document.documentElement.dataset.materials = 'all';
+    if (p.get('focus') === 'materials') document.documentElement.dataset.focus = 'materials';
+    if (p.get('lightbox') === '1') document.documentElement.dataset.lightbox = '1';
+    if (p.get('sheet') === '1') document.documentElement.dataset.sheet = '1';
+  })();
+</script>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-quote" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.6 6.4c-2.6 1.1-4 3.2-4 6.2 0 2.6 1.5 4.4 3.7 4.4 2 0 3.4-1.4 3.4-3.3 0-1.8-1.2-3.1-2.9-3.1-.4 0-.8.1-1.1.2.3-1.5 1.2-2.6 2.6-3.3zM19.6 6.4c-2.6 1.1-4 3.2-4 6.2 0 2.6 1.5 4.4 3.7 4.4 2 0 3.4-1.4 3.4-3.3 0-1.8-1.2-3.1-2.9-3.1-.4 0-.8.1-1.1.2.3-1.5 1.2-2.6 2.6-3.3z"/>
+    </symbol>
+    <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 4 9.4 14.6M20 4l-6.5 16-4.1-5.4L4 10.5Z"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.8 9.2 12 15.4l6.2-6.2"/>
+    </symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.6 12h14.2M13.4 6.6 18.8 12l-5.4 5.4"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+      <path d="M6.2 6.2l11.6 11.6M17.8 6.2 6.2 17.8"/>
+    </symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5.6" cy="12" r="1.45"/><circle cx="12" cy="12" r="1.45"/><circle cx="18.4" cy="12" r="1.45"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6.6 9.5 17.1 4 11.6"/>
+    </symbol>
+    <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 14.4a3 3 0 0 1-3 3H8.6L4.4 20V7.6a3 3 0 0 1 3-3h9.6a3 3 0 0 1 3 3z"/>
+    </symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.3"/><path d="M12 7.6V12l3 1.8"/>
+    </symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 7h16M4 12h10M4 17h7"/>
+    </symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.2 13.8a3.2 3.2 0 0 1 0-4.5l2.5-2.5a3.2 3.2 0 0 1 4.5 4.5l-1.4 1.4"/>
+      <path d="M13.8 10.2a3.2 3.2 0 0 1 0 4.5l-2.5 2.5a3.2 3.2 0 0 1-4.5-4.5l1.4-1.4"/>
+    </symbol>
+    <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.4"/>
+      <circle cx="9" cy="9.4" r="1.4"/>
+      <path d="m5.4 17 4.2-4.2 2.8 2.8 2.4-2.4 3.8 3.8"/>
+    </symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 4.8h5.2V10M19 5 11.2 12.8"/>
+      <path d="M18.6 14.2v3.6a2.2 2.2 0 0 1-2.2 2.2H5.8a2.2 2.2 0 0 1-2.2-2.2V7.2A2.2 2.2 0 0 1 5.8 5h3.6"/>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2"/>
+      <path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>
+    </symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m8.4 12.6 5.8-5.8a3.4 3.4 0 0 1 4.8 4.8l-7.3 7.3a5 5 0 0 1-7.1-7.1l6.6-6.6"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <path d="M12 5.5v13M5.5 12h13"/>
+    </symbol>
+    <symbol id="i-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13.4 5.2h5.4v5.4M18.4 5.6 11 13"/>
+      <path d="M9.2 5.6H6.4a2 2 0 0 0-2 2v9.8a2 2 0 0 0 2 2h9.8a2 2 0 0 0 2-2v-2.8"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- 背景：看板，只用来提供产品语境，全部不可交互 -->
+<div class="board-scene" aria-hidden="true">
+  <div class="board-top">
+    <span class="logo"><svg class="ic"><use href="#i-more"/></svg></span>
+    <b>指挥台</b>
+    <span class="muted">11 月 19 日 · 周三</span>
+    <span class="tabs"><i class="on">看板</i><i>回收站 3</i></span>
+    <span class="grow"></span>
+    <span class="ghost-chip">关闭</span>
+  </div>
+  <div class="board-cols">
+    <div class="bcol">
+      <div class="bcol-head"><span>待派发确认</span><i>1</i></div>
+      <div class="bcard"><p>给看板加轮次徽标</p><span>Research · 18:04</span></div>
+    </div>
+    <div class="bcol">
+      <div class="bcol-head"><span>进行中</span><i>2</i></div>
+      <div class="bcard"><p>补 SSE 断线 3 秒快照降级</p><span>Research · 18:21</span></div>
+      <div class="bcard"><p>验收证据链字段缺失</p><span>HtDot · 16:40</span></div>
+    </div>
+    <div class="bcol">
+      <div class="bcol-head"><span>待验收</span><i>2</i></div>
+      <div class="bcard is-sel"><p>核查 GLM 最近一周是否发布新模型…</p><span>Htdot · 19:32</span><em class="round-badge" data-round="2">第 2 轮</em></div>
+      <div class="bcard"><p>搜索 Skill：/prototype 的来源与用法</p><span>Research · 18:31</span><em class="round-badge" data-round="1">第 1 轮</em></div>
+    </div>
+    <div class="bcol">
+      <div class="bcol-head"><span>已完成</span><i>3</i></div>
+      <div class="bcard"><p>订单导出改流式</p><span>HtDot · 18:04</span></div>
+      <div class="bcard"><p>看板拖拽后状态回弹</p><span>Research · 17:52</span></div>
+    </div>
+  </div>
+</div>
+<div class="scrim" aria-hidden="true"></div>
+
+<!-- 任务详情：标题优先 + 轮次编年 -->
+<main class="detail" role="dialog" aria-label="任务详情">
+  <header class="d-head">
+    <div class="d-close">
+      <button class="icon-btn" type="button" aria-label="更多操作" title="更多操作"><svg class="ic"><use href="#i-dots"/></svg></button>
+      <button class="icon-btn" type="button" aria-label="关闭详情" title="关闭详情"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+
+    <h1 class="d-title">核查 GLM 最近一周是否发布新模型，并评估对 Htdot 的影响</h1>
+
+    <div class="d-meta">
+      <span class="status-chip" data-status="review"><i></i>待验收</span>
+      <span class="round-chip">第 2 轮</span>
+      <span class="meta-sep">·</span>
+      <span class="meta-ws">Htdot-OrderCenter <em>本轮</em></span>
+      <span class="meta-sep">·</span>
+      <span>普通</span>
+      <span class="meta-sep">·</span>
+      <span>2 个工作区</span>
+      <span class="meta-sep">·</span>
+      <span>更新于 19:32</span>
+    </div>
+
+    <div class="d-goal" id="goal">
+      <p>调研 GLM（智谱 Zhipu AI / Z.ai）最近一周（2026-11-13 → 2026-11-19）是否发布新模型或重要模型更新；基于第 1 轮结论，评估这些变化对 Htdot 订单中心的兼容性影响。</p>
+      <button class="link" type="button" id="goal-toggle">展开</button>
+    </div>
+
+    <nav class="round-nav" aria-label="任务轮次">
+      <button class="round-tab" type="button" data-jump="round-1">
+        <span class="round-tab-line"><b>第 1 轮</b></span>
+        <span class="round-tab-sub">Research · 新建会话</span>
+      </button>
+      <span class="round-arrow" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></span>
+      <button class="round-tab is-current" type="button" data-jump="round-2">
+        <span class="round-tab-line"><b>第 2 轮</b><span class="round-flag">当前</span></span>
+        <span class="round-tab-sub">Htdot-OrderCenter · 新建会话</span>
+      </button>
+      <span class="round-total">共 2 轮</span>
+    </nav>
+  </header>
+
+  <div class="d-body" id="d-body">
+    <!-- ================================================= 第 1 轮 -->
+    <section class="round is-collapsed" id="round-1" data-round="1">
+      <header class="round-head">
+        <div class="round-head-main">
+          <span class="round-index">第 1 轮</span>
+          <span class="round-target">Research · 新建会话</span>
+        </div>
+        <div class="round-head-right">
+          <span class="round-time">19:08–19:14</span>
+          <span class="round-count-badge">6/6 验收</span>
+          <button class="round-toggle link" type="button" data-toggle-round="round-1">展开</button>
+        </div>
+      </header>
+      <div class="round-summary">
+        <p>六渠道交叉检索 → 6/6 验收通过 · 1 个工作会话 · 6 项材料</p>
+        <q>“调研 GLM（智谱 Zhipu AI / Z.ai）最近一周（2026-11-13 至 2026-11-19）是否发布了新模型或重要模型更新。”</q>
+      </div>
+
+      <div class="round-events">
+        <article class="ev" data-kind="user">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:08</time><span class="kind">用户原话</span><span class="src">指挥官会话</span></div>
+            <blockquote class="quote">调研 GLM（智谱 Zhipu AI / Z.ai）最近一周（2026-11-13 至 2026-11-19）是否发布了新模型或重要模型更新。要求：（1）一手渠道核查：智谱官网与博客（zhipuai.cn / z.ai）、BigModel 开放平台 API 更新日志与模型列表、GitHub THUDM 与 zai-org 组织的新仓库与 release、HuggingFace THUDM / zai-org 组织的新模型（按 createdAt/lastModified 排序）、ModelScope、以及官方 X/公众号 公告；（2）逐条给出来源与时间，结论要能复核。</blockquote>
+          </div>
+        </article>
+
+        <article class="ev" data-kind="dispatch">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:10</time><span class="kind">派发</span><span class="target">Research · 新建会话</span></div>
+            <div class="card dispatch-card">
+              <div class="card-head">
+                <span class="card-label">派发内容</span>
+                <span class="card-note">工作会话收到的原文</span>
+                <button class="link brief-toggle" type="button">展开全文</button>
+              </div>
+              <div class="brief">
+                <p><b>任务：</b>核查 GLM 最近一周（11/13~11/19）是否发布新模型</p>
+                <p><b>目标：</b>调研 GLM（智谱 Zhipu AI / Z.ai）最近一周是否发布新模型或重要模型更新。要求：一手渠道核查官网/博客、BigModel 更新日志、GitHub THUDM/zai-org、HuggingFace、ModelScope、官方公告；给出结论、每条渠道的最新记录与时间，并把「新模型」与「SKU/法律版」区分开。</p>
+                <p><b>约束：</b>你是工作会话，自己拆分与执行；结束时在会话里说明产出与证据（文件路径/命令/结果），不要维护看板。</p>
+              </div>
+              <details class="confirm">
+                <summary><span class="jev">Jev 61%</span><span>采用建议</span><i>·</i><span>2 个候选</span><i>·</i><span>确认于 19:10</span></summary>
+                <ul>
+                  <li><span>Research / 新建会话</span><b>61%</b></li>
+                  <li><span>Research / 调研并安装 prototype Skill</span><b>21%</b></li>
+                </ul>
+              </details>
+            </div>
+          </div>
+        </article>
+
+        <article class="ev" data-kind="session">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:12</time><span class="kind">工作会话</span><span class="src">已停止</span></div>
+            <a class="session-card" href="#" onclick="return false">
+              <span class="avatar">R</span>
+              <span class="session-main">
+                <span class="session-name">GLM 一周新模型核查</span>
+                <span class="session-sub">Research · 工作会话 · 19:12 有活动</span>
+              </span>
+              <span class="session-state">idle</span>
+              <svg class="ic"><use href="#i-chev"/></svg>
+            </a>
+          </div>
+        </article>
+
+        <article class="ev" data-kind="report">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:14</time><span class="kind">整理报告</span><span class="ok-badge">6/6 证据</span><span class="mat-badge"><svg class="ic"><use href="#i-paperclip"/></svg>6 材料</span></div>
+            <div class="conclusion">
+              <span class="conclusion-kicker">结论</span>
+              <p>11-13~11-19 智谱没有发布任何新模型或重要模型更新。六处渠道交叉一致且最新记录都早于窗口：docs.z.ai 与 docs.bigmodel.cn 最新均为 GLM-5.3-Flash（2026-08-26）；BigModel 在架清单无 5.5、无 Next；HF zai-org createdAt 倒序最新 08-25（lastModified 最晚 10-15）；GitHub 无窗口内 release。</p>
+              <button class="link" type="button">展开结论</button>
+              <div class="conclusion-foot">
+                <span><svg class="ic"><use href="#i-paperclip"/></svg>6 个来源可复核</span>
+                <button class="link" type="button" data-jump-materials="materials-1">查看依据</button>
+              </div>
+            </div>
+
+            <div class="materials is-compact" id="materials-1">
+              <header class="materials-head">
+                <div class="materials-title"><span class="materials-kicker">依据与材料</span><span class="materials-count">6</span></div>
+                <span class="materials-sum">6 个链接</span>
+                <button class="link materials-toggle" type="button" data-toggle-materials="materials-1">收起</button>
+              </header>
+              <div class="materials-body">
+                <ul class="material-list">
+                  <li class="material-row" data-kind="link" data-href="https://docs.z.ai/release-notes">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>docs.z.ai · Release Notes</b><small>官方发布记录 · 外部链接</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row" data-kind="link" data-href="https://docs.bigmodel.cn/cn/guide/models">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>BigModel 在架模型列表</b><small>docs.bigmodel.cn · 外部链接</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row" data-kind="link" data-href="https://huggingface.co/zai-org">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>HuggingFace · zai-org</b><small>huggingface.co · 外部链接</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row mat-extra" data-kind="link" data-href="https://github.com/zai-org">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>GitHub · zai-org releases</b><small>github.com · 外部链接</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row mat-extra" data-kind="link" data-href="https://modelscope.cn/organization/ZhipuAI">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>ModelScope · ZhipuAI</b><small>modelscope.cn · 外部链接</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row mat-extra" data-kind="link" data-href="https://x.com/ZhipuAI">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>官方 X · @ZhipuAI</b><small>x.com · 外部链接</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                </ul>
+                <button class="materials-more" type="button" data-expand-materials="materials-1"><span>查看全部 6 项</span><svg class="ic"><use href="#i-chev"/></svg></button>
+              </div>
+            </div>
+
+            <div class="acceptance">
+              <button class="acceptance-head" type="button" data-toggle-acc="acc-1">
+                <span>验收 6 条</span><span class="acceptance-sum">6/6 有证据</span><svg class="ic"><use href="#i-chev"/></svg>
+              </button>
+              <ol id="acc-1">
+                <li>
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div><p>六处渠道交叉一致得出「窗口内无新模型/重要更新」，并逐条列出各渠道最新记录与时间</p><span class="evidence">证据 · docs.z.ai/release-notes · BigModel 模型列表</span></div>
+                </li>
+                <li>
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div><p>给出最近一次模型发布的时间与规格，作为「本周无新模型」的对照基线</p><span class="evidence">证据 · GLM-5.3-Flash（2026-08-26）· 320B 参数</span></div>
+                </li>
+                <li>
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div><p>正确归类：新增 SKU（同基座法律版档位）不算新模型，并说明官方未收录</p><span class="evidence">证据 · GLM-5.3-Flash-Legal（2026-09-01）· 官方 release notes</span></div>
+                </li>
+                <li class="acc-extra">
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div><p>区分「新模型」与窗口内真实发生的非模型动态，避免混淆</p><span class="evidence">证据 · 渠道公告时间线</span></div>
+                </li>
+                <li class="acc-extra">
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div><p>报告给出可复核的来源链接与检索时间</p><span class="evidence">证据 · 6 个渠道链接</span></div>
+                </li>
+                <li class="acc-extra">
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div><p>没有把 5.5 / Next 的传闻当成已发布</p><span class="evidence">证据 · 官方渠道均无记录</span></div>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================================================= 第 2 轮 -->
+    <section class="round is-current" id="round-2" data-round="2">
+      <header class="round-head">
+        <div class="round-head-main">
+          <span class="round-index">第 2 轮</span>
+          <span class="round-target">Htdot-OrderCenter · 新建会话</span>
+        </div>
+        <div class="round-head-right">
+          <span class="round-time">19:19–19:32</span>
+          <span class="round-count-badge">2/2 验收</span>
+          <button class="round-toggle link" type="button" data-toggle-round="round-2">收起</button>
+        </div>
+      </header>
+
+      <div class="round-events">
+        <article class="ev" data-kind="user">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:19</time><span class="kind">用户原话</span><span class="src">看板 · 继续派发</span></div>
+            <blockquote class="quote">基于第 3 条（GLM-5.3-Flash-Legal），再核实 Htdot 订单中心依赖的模型版本与这条法律版 SKU 的关系；如果窗口内没有 breaking change，给出升级/不升级的建议，并说明回滚条件。</blockquote>
+          </div>
+        </article>
+
+        <article class="ev" data-kind="dispatch">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:21</time><span class="kind">派发</span><span class="target">Htdot-OrderCenter · 新建会话</span><span class="round-inline">第 2 轮</span></div>
+            <div class="card dispatch-card">
+              <div class="card-head">
+                <span class="card-label">派发内容</span>
+                <span class="card-note">工作会话收到的原文</span>
+                <button class="link brief-toggle" type="button">展开全文</button>
+              </div>
+              <div class="brief">
+                <p><b>任务：</b>核查 GLM 最近一周是否发布新模型，并评估对 Htdot 的影响</p>
+                <p><b>目标：</b>调研 GLM 最近一周是否发布新模型或重要模型更新；基于第 1 轮结论，评估这些变化对 Htdot 订单中心的兼容性影响。</p>
+                <p><b>本轮要求：</b>基于第 3 条（GLM-5.3-Flash-Legal），再核实 Htdot 订单中心依赖的模型版本与这条法律版 SKU 的关系；如果窗口内没有 breaking change，给出升级/不升级的建议，并说明回滚条件。</p>
+                <p><b>上一轮结论：</b>11-13~11-19 智谱没有发布任何新模型或重要模型更新；六处渠道交叉一致，最新记录均早于窗口。</p>
+                <p><b>上一轮验收项：</b>六处渠道交叉一致、给出最近一次发布基线、正确归类法律版 SKU。</p>
+                <p><b>约束：</b>你是工作会话，自己拆分与执行；结束时在会话里说明产出与证据（文件路径/命令/结果），不要维护看板。</p>
+              </div>
+              <details class="confirm">
+                <summary><span class="jev">Jev 74%</span><span>自定义选择</span><i>·</i><span>3 个候选</span><i>·</i><span>确认于 19:21</span></summary>
+                <ul>
+                  <li><span>Htdot-OrderCenter / 新建会话</span><b>74%</b></li>
+                  <li><span>Research / 原会话</span><b>18%</b></li>
+                  <li><span>Research / 新建会话</span><b>8%</b></li>
+                </ul>
+              </details>
+            </div>
+          </div>
+        </article>
+
+        <article class="ev" data-kind="session">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:26</time><span class="kind">工作会话</span><span class="src">已停止</span></div>
+            <a class="session-card" href="#" onclick="return false">
+              <span class="avatar" data-ws="htdot">H</span>
+              <span class="session-main">
+                <span class="session-name">GLM 兼容性评估</span>
+                <span class="session-sub">Htdot-OrderCenter · 工作会话 · 19:32 有活动</span>
+              </span>
+              <span class="session-state">idle</span>
+              <svg class="ic"><use href="#i-chev"/></svg>
+            </a>
+          </div>
+        </article>
+
+        <article class="ev" data-kind="report">
+          <div class="rail"><span class="dot"></span></div>
+          <div class="ev-main">
+            <div class="ev-meta"><time>19:32</time><span class="kind">整理报告</span><span class="ok-badge">2/2 证据</span><span class="mat-badge"><svg class="ic"><use href="#i-paperclip"/></svg>7 材料</span></div>
+            <div class="conclusion">
+              <span class="conclusion-kicker">结论</span>
+              <p>Htdot 订单中心当前依赖 GLM-4.6；GLM-5.3-Flash-Legal 是独立法律版 SKU，不在同一 API 别名下，窗口内未发现 breaking change。建议保持 4.6 不变，把法律版能力作为独立试点，不影响现有订单链路。</p>
+              <button class="link" type="button">展开结论</button>
+              <div class="conclusion-foot">
+                <span><svg class="ic"><use href="#i-paperclip"/></svg>2 张截图 · 3 个来源 · 2 份文档</span>
+                <button class="link" type="button" data-jump-materials="materials-2">查看依据</button>
+              </div>
+            </div>
+
+            <div class="materials" id="materials-2">
+              <header class="materials-head">
+                <div class="materials-title"><span class="materials-kicker">依据与材料</span><span class="materials-count">7</span></div>
+                <span class="materials-sum">2 图 · 3 链接 · 2 文档</span>
+                <button class="link materials-toggle" type="button" data-toggle-materials="materials-2">收起</button>
+              </header>
+              <div class="materials-body">
+                <div class="materials-gallery">
+                  <button class="shot" type="button" data-lightbox="config" aria-label="查看大图：订单中心模型配置">
+                    <span class="shot-img"><img src="assets/config.png" alt="订单中心模型配置截图" loading="lazy"><span class="shot-zoom"><svg class="ic"><use href="#i-open"/></svg></span></span>
+                    <span class="shot-cap"><b>订单中心模型配置</b><small>工作会话交付 · PNG</small></span>
+                  </button>
+                  <button class="shot" type="button" data-lightbox="sku" aria-label="查看大图：SKU 边界对比">
+                    <span class="shot-img"><img src="assets/sku.png" alt="GLM-4.6 与 GLM-5.3-Flash-Legal 的 SKU 边界对比图" loading="lazy"><span class="shot-zoom"><svg class="ic"><use href="#i-open"/></svg></span></span>
+                    <span class="shot-cap"><b>SKU 边界对比</b><small>工作会话交付 · PNG</small></span>
+                  </button>
+                </div>
+
+                <ul class="material-list">
+                  <li class="material-row" data-kind="link" data-href="https://docs.z.ai/release-notes">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>官方发布记录 · docs.z.ai</b><small>指挥官整理 · 外部链接，未校验</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row" data-kind="file" data-file="Htdot 模型依赖清单.xlsx" data-path="/Users/lzx/Htdot/model-deps.xlsx">
+                    <span class="m-icon" data-ext="xlsx"><svg class="ic"><use href="#i-file"/></svg></span>
+                    <span class="m-main"><b>Htdot 模型依赖清单.xlsx</b><small>工作会话交付 · XLSX · 24 KB</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-more"/></svg></span>
+                  </li>
+                  <li class="material-row" data-kind="file" data-file="GLM 兼容性评估.pdf" data-path="/Users/lzx/Htdot/glm-compat.pdf">
+                    <span class="m-icon" data-ext="pdf"><svg class="ic"><use href="#i-file"/></svg></span>
+                    <span class="m-main"><b>GLM 兼容性评估.pdf</b><small>工作会话交付 · PDF · 1.2 MB</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-more"/></svg></span>
+                  </li>
+                  <li class="material-row mat-extra" data-kind="link" data-href="https://docs.bigmodel.cn/cn/guide/models">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>BigModel 在架模型列表</b><small>指挥官整理 · 外部链接，未校验</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                  <li class="material-row mat-extra" data-kind="link" data-href="https://huggingface.co/zai-org">
+                    <span class="m-icon"><svg class="ic"><use href="#i-link"/></svg></span>
+                    <span class="m-main"><b>HuggingFace · zai-org</b><small>指挥官整理 · 外部链接，未校验</small></span>
+                    <span class="m-trail"><svg class="ic"><use href="#i-external"/></svg></span>
+                  </li>
+                </ul>
+                <button class="materials-more" type="button" data-expand-materials="materials-2"><span>查看全部 7 项</span><svg class="ic"><use href="#i-chev"/></svg></button>
+              </div>
+            </div>
+
+            <div class="acceptance is-open" id="acc-2">
+              <button class="acceptance-head" type="button" data-toggle-acc="acc-2">
+                <span>验收 2 条</span><span class="acceptance-sum">2/2 有证据</span><svg class="ic"><use href="#i-chev"/></svg>
+              </button>
+              <ol>
+                <li>
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div>
+                    <p>核对 Htdot 依赖的模型版本与调用方式，确认与法律版 SKU 的边界</p>
+                    <span class="evidence">证据 · Htdot 配置 · 模型别名清单</span>
+                    <span class="evidence-chips">
+                      <button class="ev-chip" type="button" data-lightbox="config"><svg class="ic"><use href="#i-image"/></svg>配置截图</button>
+                      <button class="ev-chip" type="button" data-file="Htdot 模型依赖清单.xlsx" data-path="/Users/lzx/Htdot/model-deps.xlsx"><svg class="ic"><use href="#i-file"/></svg>依赖清单.xlsx</button>
+                    </span>
+                  </div>
+                </li>
+                <li>
+                  <span class="check"><svg class="ic"><use href="#i-check"/></svg></span>
+                  <div>
+                    <p>给出明确的升级/不升级建议与回滚条件</p>
+                    <span class="evidence">证据 · 兼容性结论 · 回滚开关</span>
+                    <span class="evidence-chips">
+                      <button class="ev-chip" type="button" data-file="GLM 兼容性评估.pdf" data-path="/Users/lzx/Htdot/glm-compat.pdf"><svg class="ic"><use href="#i-file"/></svg>兼容性评估.pdf</button>
+                      <button class="ev-chip" type="button" data-href="https://docs.z.ai/release-notes"><svg class="ic"><use href="#i-link"/></svg>发布记录</button>
+                    </span>
+                  </div>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </article>
+
+        <div class="now" aria-current="step">
+          <span class="now-dot"></span>
+          <div><b>现在 · 待验收</b><p>等待你确认第 2 轮验收；也可以基于本轮结果继续派发第 3 轮。</p></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="d-foot">
+    <div class="foot-main">
+      <p class="foot-hint">验收为人工确认；继续派发会通知指挥官开始新一轮</p>
+      <div class="foot-actions">
+        <button class="btn ghost" type="button" id="continue">继续派发</button>
+        <button class="btn success" type="button" id="accept"><svg class="ic"><use href="#i-check"/></svg>通过验收</button>
+      </div>
+    </div>
+    <form class="composer" id="composer" hidden>
+      <div class="composer-head">
+        <b>继续派发 · 第 3 轮</b>
+        <span>任务保持待验收，指挥官确认后才会真正派发</span>
+        <button class="icon-btn" type="button" id="composer-close" aria-label="关闭"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <textarea id="composer-text" rows="3" placeholder="要修正或深入的点；会作为第 3 轮的「本轮要求」发给工作会话。"></textarea>
+      <div class="composer-targets" role="group" aria-label="派发目标">
+        <button type="button" class="target is-on"><span>原会话</span><small>Htdot · GLM 兼容性评估</small></button>
+        <button type="button" class="target"><span>新工作区 / 新会话</span><small>由指挥官推荐</small></button>
+      </div>
+      <div class="composer-foot">
+        <span>提交后只通知指挥官；确认卡里再选最终目标</span>
+        <button class="btn ghost sm" type="button" id="composer-cancel">取消</button>
+        <button class="btn primary sm" type="submit">通知指挥官继续派发</button>
+      </div>
+    </form>
+  </footer>
+</main>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<!-- 图片预览：报告材料里的截图/示意图 -->
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lb-scrim" data-close-lightbox></div>
+  <div class="lb-card" role="dialog" aria-modal="true" aria-labelledby="lb-title">
+    <header class="lb-head">
+      <span class="lb-count" id="lb-count">1 / 2</span>
+      <span class="lb-kicker">材料预览</span>
+      <button class="icon-btn" type="button" data-close-lightbox aria-label="关闭预览"><svg class="ic"><use href="#i-x"/></svg></button>
+    </header>
+    <div class="lb-stage">
+      <button class="lb-nav prev" type="button" id="lb-prev" aria-label="上一张"><svg class="ic"><use href="#i-chev"/></svg></button>
+      <img id="lb-img" src="assets/config.png" alt="订单中心模型配置截图">
+      <button class="lb-nav next" type="button" id="lb-next" aria-label="下一张"><svg class="ic"><use href="#i-chev"/></svg></button>
+    </div>
+    <footer class="lb-caption">
+      <div class="lb-copy-block">
+        <b id="lb-title">订单中心模型配置</b>
+        <small id="lb-meta">工作会话交付 · Htdot-OrderCenter · PNG</small>
+      </div>
+      <div class="lb-actions">
+        <button class="btn ghost sm" type="button" id="lb-copy"><svg class="ic"><use href="#i-copy"/></svg>复制路径</button>
+        <button class="btn primary sm" type="button" id="lb-open">打开原图</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- 文件动作：本地文档不直接内嵌预览，先给明确动作 -->
+<div class="sheet" id="file-sheet" hidden>
+  <div class="sheet-scrim" data-close-sheet></div>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <span class="sheet-grip" aria-hidden="true"></span>
+    <header class="sheet-head">
+      <span class="m-icon" id="sheet-icon"><svg class="ic"><use href="#i-file"/></svg></span>
+      <span class="sheet-main"><b id="sheet-title">Htdot 模型依赖清单.xlsx</b><small id="sheet-meta">工作会话交付 · XLSX · 24 KB</small></span>
+      <button class="icon-btn" type="button" data-close-sheet aria-label="关闭"><svg class="ic"><use href="#i-x"/></svg></button>
+    </header>
+    <div class="sheet-path" id="sheet-path">/Users/lzx/Htdot/model-deps.xlsx</div>
+    <div class="sheet-actions">
+      <button class="btn ghost sm" type="button" data-close-sheet><svg class="ic"><use href="#i-copy"/></svg>复制路径</button>
+      <button class="btn ghost sm" type="button" data-close-sheet>在访达中显示</button>
+      <button class="btn primary sm" type="button" data-close-sheet><svg class="ic"><use href="#i-open"/></svg>打开文件</button>
+    </div>
+    <p class="sheet-note">本地文档由 Host 校验后打开；不会把文件内容复制进任务记录。</p>
+  </div>
+</div>
+
+<!-- 设计稿控件，不属于产品界面 -->
+<div class="switcher" role="group" aria-label="设计稿切换">
+  <span class="sw-kicker">设计稿</span>
+  <button type="button" data-act="reset" class="is-on">默认</button>
+  <button type="button" data-act="expand">展开第 1 轮</button>
+  <button type="button" data-act="materials">材料全展开</button>
+  <button type="button" data-act="lightbox">查看大图</button>
+  <button type="button" data-act="compose">继续派发</button>
+  <button type="button" data-act="theme">浅色</button>
+  <span class="sw-note">1 / 2 / 3 / 4 / 5 · T</span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

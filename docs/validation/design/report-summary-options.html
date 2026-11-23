@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>organize_report 结论区方案</title>
+<style>
+  :root {
+    --page: #151517;
+    --layer1: #232324;
+    --layer2: #2c2c2e;
+    --layer3: #353638;
+    --border1: rgba(255,255,255,.06);
+    --border2: #ffffff1f;
+    --text1: #f9fafb;
+    --text2: #cfd3d6;
+    --text3: #adb2b8;
+    --success: #22c55e;
+    --warn: #f59e0b;
+    --info: #3b82f6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    color: var(--text1);
+    padding: 18px 16px 26px;
+  }
+  .board-title { font-size: 13px; color: var(--text3); margin: 0 0 14px; letter-spacing: .02em; }
+  .board-title b { color: var(--text1); font-weight: 600; }
+  .variant { margin-bottom: 26px; }
+  .variant > h2 {
+    margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    color: var(--text3); text-transform: uppercase;
+  }
+  .variant > h2 em { font-style: normal; color: var(--text2); font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: 6px; }
+
+  .drawer {
+    background: var(--layer1);
+    border: 1px solid var(--border1);
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+  }
+  .ev { display: flex; gap: 10px; }
+  .rail { width: 10px; flex: none; display: flex; justify-content: center; padding-top: 5px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+  .main { min-width: 0; flex: 1; }
+  .meta {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-size: 10.5px; color: var(--text3);
+  }
+  .meta time { font-family: ui-monospace, monospace; font-size: 10px; color: var(--text3); }
+  .kind {
+    line-height: 16px; padding: 0 6px; border-radius: 999px;
+    border: 1px solid var(--border2); font-size: 9.5px;
+  }
+  .ok { font-size: 10px; color: var(--success); }
+
+  /* 现状 */
+  .ev-text { margin: 4px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--text1); }
+  .ev-summary { margin: 4px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--text2); white-space: pre-wrap; }
+
+  /* 验收清单（与线上一致） */
+  .checks {
+    margin-top: 8px; padding: 0 12px;
+    border: 1px solid var(--border1); border-radius: 10px; background: var(--layer2);
+  }
+  .check { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border1); }
+  .check:first-child { border-top: 0; }
+  .check-dot {
+    display: flex; align-items: center; justify-content: center; flex: none;
+    width: 16px; height: 16px; margin-top: 2px; border-radius: 50%;
+    border: 1px solid var(--success); color: var(--success); font-size: 10px; font-weight: 700; line-height: 1;
+  }
+  .check-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .check-text { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--text1); }
+  .evline { display: flex; align-items: baseline; gap: 6px; margin: 0; font-size: 10.5px; color: var(--text3); }
+  .evtag { flex: none; }
+  .evsum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .more { margin: 6px 0 0; font-size: 10.5px; color: var(--text3); }
+
+  /* 方案 A：结论卡 */
+  .conclusion {
+    position: relative;
+    margin-top: 8px;
+    padding: 9px 12px 10px;
+    border: 1px solid var(--border1);
+    border-left: 3px solid var(--info);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(86,134,254,.10), rgba(86,134,254,0) 64%), var(--layer2);
+  }
+  .conclusion-head { display: flex; align-items: center; gap: 7px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 6px; border-radius: 5px;
+    background: var(--info); color: #fff;
+    font-size: 10px; font-weight: 600; line-height: 15px;
+  }
+  .conclusion-text {
+    margin: 5px 0 0; font-size: 12.5px; line-height: 1.72; color: var(--text1);
+    white-space: pre-wrap;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+    -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+  }
+  .conclusion[data-expanded="true"] .conclusion-text {
+    -webkit-line-clamp: unset; display: block;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  .expand {
+    display: inline-flex; align-items: center; gap: 3px;
+    margin: 6px 0 0; padding: 0; border: 0; background: none; cursor: pointer;
+    font-size: 10.5px; color: var(--info); font-family: inherit;
+  }
+
+  /* 方案 B：轻量内联 */
+  .inline { margin: 4px 0 0; font-size: 12.5px; line-height: 1.65; color: var(--text2); white-space: pre-wrap; }
+  .inline-badge {
+    display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px;
+    background: var(--layer3); color: var(--text3); font-size: 9.5px; line-height: 15px;
+    vertical-align: 1px;
+  }
+  .fade-3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+
+  .note { margin: 8px 0 0; font-size: 10.5px; line-height: 1.6; color: var(--text3); }
+  .accent { color: var(--text2); }
+</style>
+</head>
+<body>
+  <p class="board-title">任务抽屉 · 整理报告行 —— <b>结论区排版方案对比</b></p>
+
+  <!-- 现状 -->
+  <section class="variant">
+    <h2>现状 <em>固定文案 + 无容器长文，结论和证据平铺</em></h2>
+    <div class="drawer">
+      <article class="ev">
+        <div class="rail"><span class="dot"></span></div>
+        <div class="main">
+          <div class="meta"><time>18:17</time><span class="kind">整理报告</span><span class="ok">6/6 证据</span></div>
+          <p class="ev-text">指挥官整理验收内容</p>
+          <p class="ev-summary">结论：2026-11-13 至 11-19 Kimi 没有发布任何新模型，也没有可确证的仅 API 侧名称/价格/能力调整。一手证据：平台 changelog 最新月份条目为 2026 年 10 月，无 11 月条目；在架模型仅 kimi-k3.1-pro、kimi-k3.1-pro-highspeed、kimi-k3 三个；HF moonshotai 20 个仓库最新 Kimi-K3.1-Pro（createdAt 11-02，lastModified 11-05）。另排除一条伪信号：网传 11-16 涨价，但官方现价仍 $2/$10。</p>
+          <div class="checks">
+            <div class="check">
+              <span class="check-dot">✓</span>
+              <div class="check-main">
+                <p class="check-text">给出「窗口内无新模型」主结论并附平台发布记录与在架模型列表一手证据</p>
+                <p class="evline"><span class="evtag">证据</span><span class="evsum">platform.kimi.com/docs/changelog.md 最新月份条目为「2026 年 …</span></p>
+              </div>
+            </div>
+          </div>
+          <p class="more">另有 5 条验收项…</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 方案 A -->
+  <section class="variant">
+    <h2>方案 A · 结论卡（采用） <em>深蓝左色条 + 「结论」胶囊 + 4 行折叠（不占用证据绿、无冗余说明）</em></h2>
+    <div class="drawer">
+      <article class="ev">
+        <div class="rail"><span class="dot"></span></div>
+        <div class="main">
+          <div class="meta"><time>18:17</time><span class="kind">整理报告</span><span class="ok">6/6 证据</span></div>
+          <div class="conclusion">
+            <div class="conclusion-head">
+              <span class="pill">结论</span>
+            </div>
+            <p class="conclusion-text">2026-11-13 至 11-19 Kimi 没有发布任何新模型，也没有可确证的仅 API 侧名称/价格/能力调整。一手证据：平台 changelog 最新月份条目为 2026 年 10 月，无 11 月条目；在架模型仅 kimi-k3.1-pro、kimi-k3.1-pro-highspeed、kimi-k3 三个；HF moonshotai 20 个仓库最新 Kimi-K3.1-Pro（createdAt 11-02，lastModified 11-05）。另排除一条伪信号：网传 11-16 涨价，但官方现价仍 $2/$10。</p>
+            <div style="text-align:right"><button class="expand">展开结论</button></div>
+          </div>
+          <div class="checks">
+            <div class="check">
+              <span class="check-dot">✓</span>
+              <div class="check-main">
+                <p class="check-text">给出「窗口内无新模型」主结论并附平台发布记录与在架模型列表一手证据</p>
+                <p class="evline"><span class="evtag">证据</span><span class="evsum">platform.kimi.com/docs/changelog.md 最新月份条目为「2026 年 …</span></p>
+              </div>
+            </div>
+          </div>
+          <p class="more">另有 5 条验收项…</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 方案 B -->
+  <section class="variant">
+    <h2>方案 B · 轻量内联 <em>只换标签 + 3 行截断，不加卡片</em></h2>
+    <div class="drawer">
+      <article class="ev">
+        <div class="rail"><span class="dot"></span></div>
+        <div class="main">
+          <div class="meta"><time>18:17</time><span class="kind">整理报告</span><span class="ok">6/6 证据</span></div>
+          <p class="inline"><span class="inline-badge">结论</span><span class="fade-3">2026-11-13 至 11-19 Kimi 没有发布任何新模型，也没有可确证的仅 API 侧名称/价格/能力调整。一手证据：平台 changelog 最新月份条目为 2026 年 10 月，无 11 月条目；在架模型仅 kimi-k3.1-pro、kimi-k3.1-pro-highspeed、kimi-k3 三个。</span></p>
+          <button class="expand">展开结论</button>
+          <div class="checks">
+            <div class="check">
+              <span class="check-dot">✓</span>
+              <div class="check-main">
+                <p class="check-text">给出「窗口内无新模型」主结论并附平台发布记录与在架模型列表一手证据</p>
+                <p class="evline"><span class="evtag">证据</span><span class="evsum">platform.kimi.com/docs/changelog.md 最新月份条目为「2026 年 …</span></p>
+              </div>
+            </div>
+          </div>
+          <p class="more">另有 5 条验收项…</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <p class="note"><span class="accent">说明：</span>三个方案都保留行头「整理报告 + 证据计数」；A 把「指挥官整理验收内容」这句装配说明删掉，换成可扫读的「结论」胶囊；强调色用 DSH 色板里的深蓝（--dsw-static-deepseek-450），与证据勾的绿色语义分开；验收清单样式不变，只与结论卡同宽同圆角。</p>
+</body>
+</html>

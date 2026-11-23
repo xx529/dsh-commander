@@ -1,0 +1,10 @@
+# V1-C5 失败回退覆盖层：禁用能力面板行 + 插入探针，验证插件仍启动、ctx.get 为 undefined、判定回退 inherit
+- id: capability-panel
+  disabled: true
+- insert:
+    - id: probe-v1
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/validation/probes/probe-v1.mjs'
+      config:
+        outDir: /Users/lzx/Documents/GitHub/dsh-commander/.probe/evidence/nopanel
+        cwd: /Users/lzx/Documents/GitHub/dsh-commander/.probe/ws-cold
+        panelPackageJson: /Users/lzx/Documents/GitHub/dsh-commander/.probe/home/profiles/probe/node_modules/dsh-capability-settings/package.json

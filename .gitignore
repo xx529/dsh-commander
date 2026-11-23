@@ -15,3 +15,51 @@ __pycache__/
 
 # generated validation page (rebuild from docs/ARCHITECTURE.md)
 /tools/mermaid-check.html
+
+# 一次性隔离探针 DSH home（V1–V4 执行用；不提交）
+/.probe/
+
+# V5 真实数据生成物（本地生成、含用户真实数据，不外发）
+/docs/eval/cases.real.jsonl
+/docs/eval/summary-*.json
+/docs/eval/workspace-summaries.json
+
+# V5 v2 冻结真实数据（本地生成、含真实用户数据，不外发；manifest/sha256 可提交）
+/docs/eval/cases.real.v2.jsonl
+/docs/eval/frozen/cases.real.v1.jsonl
+/docs/eval/frozen/cases.real.v2.jsonl
+/docs/eval/frozen/labels.cases.v1.md
+
+# tester 独立复跑的一次性探针环境（1.2MB，不入库）
+/tests/validation/.probe-tester/
+
+/tools/eval/diagnostics/artifacts/
+
+/tests/v5-audit/blind-packet.json
+
+# M0 构建产物与本地工作区（生成物，不入库）
+/node_modules/
+/packages/dsh-commander/lib/
+/.pnpm-store/
+/.probe-m0/
+
+# 测试运行产物 / 探针 runs / 生成证据（不入库；缺失项去重后追加）
+/tests/artifacts/
+/tests/validation/.probe-upstream/
+/tests/validation/runs/
+/tests/validation/runs-upstream/
+/tests/validation/repro/
+/tests/v5-audit/audit-result.json
+/tests/v5-audit/audit-v2-result.json
+/tests/v5-audit/blind-*.json
+/tests/v5-audit/live/
+/docs/validation/*-artifacts/
+/docs/validation/evidence-*.log
+/docs/validation/v5-audit-cases.json
+
+# 本地 Tauri 构建缓存（沙箱内 CARGO_HOME）
+/.cargo-home/
+/packages/dsh-commander/native/tauri/target/
+/packages/dsh-commander/native/dist/
+/target/
+/packages/dsh-commander/native/tauri/gen/

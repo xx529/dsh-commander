@@ -1,0 +1,8 @@
+# V2 会话停止/最后回复/pendingInteraction/去重 探针覆盖层
+# 说明：stub LLM provider（probe-stub/stub-1）由探针插件在 apply 内注册，用于无凭据环境跑通回合。
+- insert:
+    - id: probe-v2
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/validation/probes/probe-v2.mjs'
+      config:
+        outDir: /Users/lzx/Documents/GitHub/dsh-commander/docs/validation/v2-artifacts
+        cwd: /Users/lzx/Documents/GitHub/dsh-commander/.probe/ws-v2

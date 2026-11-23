@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-variant="D">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 · 任务详情重设计</title>
+<meta name="description" content="DSH 指挥官任务详情抽屉的四个结构方案，用 ?variant=A|B|C|D 切换（默认 D）。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-task-status="review">
+<script>
+  // 先落状态再渲染，避免首帧闪一下默认方案。
+  (function () {
+    var p = new URLSearchParams(location.search);
+    var variant = (p.get('variant') || 'D').toUpperCase();
+    document.documentElement.dataset.variant = 'ABCD'.indexOf(variant) >= 0 ? variant : 'D';
+    var theme = p.get('theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+    var status = p.get('status');
+    if (status === 'draft' || status === 'review') document.body.dataset.taskStatus = status;
+  })();
+</script>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+      <path d="M12 3.4 13.9 10.1 20.6 12 13.9 13.9 12 20.6 10.1 13.9 3.4 12 10.1 10.1Z"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6.6 9.5 17.1 4 11.6"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.8 9.2 12 15.4l6.2-6.2"/>
+    </symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4.6 12h14.2M13.4 6.6 18.8 12l-5.4 5.4"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+      <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2Z"/>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <circle cx="12" cy="12" r="3.8"/><path d="M12 3.2v2M12 18.8v2M3.2 12h2M18.8 12h2M5.8 5.8l1.4 1.4M16.8 16.8l1.4 1.4M18.2 5.8l-1.4 1.4M7.2 16.8l-1.4 1.4"/>
+    </symbol>
+    <symbol id="i-session" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 14.4a3 3 0 0 1-3 3H8.6L4.4 20V7.6a3 3 0 0 1 3-3h9.6a3 3 0 0 1 3 3z"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.3"/><path d="M12 7.6V12l3 1.8"/>
+    </symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5.6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.4" cy="12" r="1.4"/>
+    </symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3.6v4M12 16.4v4M3.6 12h4M16.4 12h4M6 6l2.4 2.4M15.6 15.6 18 18M18 6l-2.4 2.4M8.4 15.6 6 18"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============================================================ 背景：看板 -->
+<div class="board-scene" aria-hidden="true">
+  <div class="board-shell">
+    <header class="board-head">
+      <span class="board-logo"><svg class="ic"><use href="#i-mark"/></svg></span>
+      <span class="board-name">指挥台</span>
+      <span class="board-date">11 月 18 日 · 周三</span>
+      <div class="board-tabs"><span class="on">看板</span><span>回收站 <b>3</b></span></div>
+      <span class="board-spacer"></span>
+      <button class="btn ghost sm" type="button" tabindex="-1">关闭看板</button>
+    </header>
+    <div class="board-body">
+      <div class="board-filters">
+        <span class="filter on">全部</span><span class="filter">HtDot</span><span class="filter">Research</span><span class="filter">Mira</span>
+        <span class="board-count">9 个任务</span>
+      </div>
+      <div class="board-cols">
+        <section class="col">
+          <header class="col-head"><span>待派发确认</span><i>1</i></header>
+          <div class="col-body">
+            <article class="task-card" data-priority="high">
+              <p class="task-title">订单导出改流式</p>
+              <div class="task-meta"><span>HtDot</span><span>18:04</span></div>
+              <div class="task-foot"><span class="task-chip">待确认</span></div>
+            </article>
+          </div>
+        </section>
+        <section class="col">
+          <header class="col-head"><span>进行中</span><i>2</i></header>
+          <div class="col-body">
+            <article class="task-card">
+              <p class="task-title">补 SSE 断线 3 秒快照降级</p>
+              <div class="task-meta"><span>Research</span><span>18:21</span></div>
+              <div class="task-foot"><span class="task-chip">1 个会话</span><span class="task-chip">idle</span></div>
+            </article>
+            <article class="task-card" data-priority="low">
+              <p class="task-title">看板拖拽后状态回弹</p>
+              <div class="task-meta"><span>Research</span><span>17:52</span></div>
+              <div class="task-foot"><span class="task-chip">2 个会话</span></div>
+            </article>
+          </div>
+        </section>
+        <section class="col">
+          <header class="col-head"><span>受阻</span><i>1</i></header>
+          <div class="col-body">
+            <article class="task-card" data-priority="high">
+              <p class="task-title">验收证据链字段缺失</p>
+              <div class="task-meta"><span>HtDot</span><span>16:40</span></div>
+              <div class="task-foot"><span class="task-chip warn">等外部依赖</span></div>
+            </article>
+          </div>
+        </section>
+        <section class="col">
+          <header class="col-head"><span>待验收</span><i>2</i></header>
+          <div class="col-body">
+            <article class="task-card is-selected">
+              <p class="task-title">搜索 Skill：/prototype 的来源与用法</p>
+              <div class="task-meta"><span>Research</span><span>18:31</span></div>
+              <div class="task-foot"><span class="task-chip ok">验收 3/3</span></div>
+            </article>
+            <article class="task-card">
+              <p class="task-title">整理 M2 看板空态文案</p>
+              <div class="task-meta"><span>Research</span><span>15:18</span></div>
+              <div class="task-foot"><span class="task-chip">验收 1/2</span></div>
+            </article>
+          </div>
+        </section>
+        <section class="col">
+          <header class="col-head"><span>已完成</span><i>3</i></header>
+          <div class="col-body">
+            <article class="task-card">
+              <p class="task-title">修复会话恢复后的消息乱序</p>
+              <div class="task-meta"><span>HtDot</span><span>昨天</span></div>
+            </article>
+            <article class="task-card">
+              <p class="task-title">梳理派发门禁边界</p>
+              <div class="task-meta"><span>Research</span><span>昨天</span></div>
+            </article>
+            <article class="task-card">
+              <p class="task-title">回收站恢复计数</p>
+              <div class="task-meta"><span>Mira</span><span>11/16</span></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mask" aria-hidden="true"></div>
+
+<!-- ==================================================== 方案 A：审阅台 -->
+<aside class="drawer dr-a" id="panel-A" role="dialog" aria-label="任务详情 · 方案 A 审阅台">
+  <button class="icon-btn dr-close" type="button" aria-label="关闭详情">
+    <svg class="ic"><use href="#i-x"/></svg>
+  </button>
+  <header class="a-head">
+    <div class="a-eyebrow">
+      <span class="status-chip" data-status="review"><i></i><span data-status-label>待验收</span></span>
+      <span class="sep">·</span><span>Research</span>
+      <span class="sep">·</span><span>普通优先级</span>
+    </div>
+    <h1 class="a-title">搜索 Skill：<code>/prototype</code> 的来源与用法</h1>
+    <p class="a-goal">调研 /prototype 技能的三个候选来源、安装方式与检索证据，交付一份可复核的结论。</p>
+    <div class="a-meta"><span>更新于 18:31</span><i>·</i><span>1 个工作会话</span><i>·</i><span>验收 3/3</span></div>
+  </header>
+
+  <div class="a-body">
+    <section class="a-section">
+      <div class="sec-head"><h2>验收内容</h2><span class="sec-note ok">3/3 证据齐全</span></div>
+      <ol class="checklist">
+        <li class="check">
+          <span class="check-dot"><svg class="ic"><use href="#i-check"/></svg></span>
+          <div class="check-main">
+            <p class="check-text">三个候选：来源仓库、文件路径、作者、最近 push 与许可证</p>
+            <details class="ev">
+              <summary><span class="ev-k">证据</span><span class="ev-t">findings.md · 对比表 3 行 · 均 MIT</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+              <pre class="ev-d">mattpocock/skills        skills/prototype/SKILL.md        MIT
+emilkowalski/skills      .claude/commands/prototype.md    MIT
+kurenn/claude-prototype  skills/prototype/SKILL.md        MIT</pre>
+            </details>
+          </div>
+        </li>
+        <li class="check">
+          <span class="check-dot"><svg class="ic"><use href="#i-check"/></svg></span>
+          <div class="check-main">
+            <p class="check-text">检索方法与反向结论：官方 anthropics/skills 无 prototype</p>
+            <details class="ev">
+              <summary><span class="ev-k">证据</span><span class="ev-t">gh api/search · code 290 / commands 104</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+              <pre class="ev-d">anthropics/skills：20 个 SKILL.md 逐个列举 + grep 均无 prototype
+同名范围：290 个 skills/prototype/SKILL.md、104 个 .claude/commands/prototype.md
+检索命令：gh api/search/code、gh repo view、git ls-tree</pre>
+            </details>
+          </div>
+        </li>
+        <li class="check">
+          <span class="check-dot"><svg class="ic"><use href="#i-check"/></svg></span>
+          <div class="check-main">
+            <p class="check-text">本机未安装该技能的确认，并澄清与 prototype-elicitation 无关</p>
+            <details class="ev">
+              <summary><span class="ev-k">证据</span><span class="ev-t">会话回复 · 两处通配匹配均为空</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+              <pre class="ev-d">~/.claude/skills/*prototype*   无匹配
+~/.dsh/skills/*prototype*      无匹配
+prototype-elicitation 是独立的会话引导技能，不提供 /prototype 命令</pre>
+            </details>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="a-section">
+      <div class="sec-head"><h2>决策记录</h2><span class="sec-note">Jev 阈值 80%</span></div>
+      <div class="receipt">
+        <div class="receipt-top">
+          <span class="jev">62%</span>
+          <span class="receipt-txt">采用建议 <svg class="ic arrow"><use href="#i-arrow-r"/></svg> <b>Research</b> / 新建会话</span>
+        </div>
+        <div class="receipt-sub"><span>2 个候选</span><i>·</i><span>你确认于 18:19</span></div>
+        <details class="receipt-more">
+          <summary><span>候选与评分</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+          <ul class="cands">
+            <li><span>Research / 新建会话</span><span class="pct">62%</span></li>
+            <li><span>Research / 调研并安装 prototype Skill</span><span class="pct">21%</span></li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <section class="a-section">
+      <div class="sec-head"><h2>关联会话</h2><span class="sec-note">1 个</span></div>
+      <a class="session" href="#" onclick="return false">
+        <span class="avatar">R</span>
+        <span class="session-main">
+          <span class="session-title">调研并安装 prototype Skill</span>
+          <span class="session-sub">Research · 工作会话 · 18:22 有活动</span>
+        </span>
+        <span class="session-status">idle</span>
+        <svg class="chev"><use href="#i-chev"/></svg>
+      </a>
+    </section>
+
+    <details class="a-fold">
+      <summary><span>时间线</span><span class="fold-count">5</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+      <ul class="tl">
+        <li><time>18:31</time><span class="kind">更新</span><span class="txt">指挥官刷新证据，验收 3/3</span></li>
+        <li><time>18:23</time><span class="kind">验收</span><span class="txt">整理 3 条验收内容，证据齐全</span></li>
+        <li><time>18:22</time><span class="kind">会话</span><span class="txt">工作会话产出 findings.md</span></li>
+        <li><time>18:19</time><span class="kind">派发</span><span class="txt">采用建议 → Research / 新建会话</span></li>
+        <li><time>18:12</time><span class="kind">创建</span><span class="txt">任务已创建（draft）</span></li>
+      </ul>
+    </details>
+
+    <details class="a-fold">
+      <summary><span>人工改动</span><span class="fold-count">0</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+      <p class="fold-empty">暂无人工改动。状态与优先级变更会记录在这里。</p>
+    </details>
+  </div>
+
+  <footer class="a-foot review-only">
+    <div class="a-foot-main">
+      <span class="a-foot-meta">验收为人工确认，指挥官不评估结果</span>
+      <div class="a-foot-actions">
+        <button class="btn ghost" type="button">返工</button>
+        <button class="btn success" type="button"><svg class="ic"><use href="#i-check"/></svg>通过验收</button>
+      </div>
+    </div>
+    <p class="a-foot-hint">返工会把续做 brief 发回原会话；验收后任务进入已完成。</p>
+  </footer>
+  <footer class="a-foot draft-only">
+    <div class="a-foot-main"><span class="a-foot-meta">草案 · 当前不在验收流程</span></div>
+  </footer>
+</aside>
+
+<!-- ================================================ 方案 B：双栏检视 -->
+<aside class="drawer dr-b" id="panel-B" role="dialog" aria-label="任务详情 · 方案 B 双栏检视">
+  <header class="b-head">
+    <div class="b-head-left">
+      <div class="b-crumb"><span>Research</span><span class="slash">/</span><span>任务</span><span class="slash">/</span><span>t-8f3c</span></div>
+      <h1 class="b-title">搜索 Skill：<code>/prototype</code> 的来源与用法</h1>
+      <div class="b-badges">
+        <span class="status-chip" data-status="review"><i></i><span data-status-label>待验收</span></span>
+        <span class="b-badge">普通</span><span class="b-badge">更新 18:31</span><span class="b-badge">1 个会话</span>
+      </div>
+      <p class="b-lead">调研 /prototype 技能的三个候选来源、安装方式与检索证据，交付一份可复核的结论。</p>
+    </div>
+    <div class="b-head-actions">
+      <button class="btn ghost" type="button">打开会话</button>
+      <button class="btn success review-only" type="button"><svg class="ic"><use href="#i-check"/></svg>通过验收</button>
+      <button class="icon-btn" type="button" aria-label="更多操作"><svg class="ic"><use href="#i-dots"/></svg></button>
+    </div>
+  </header>
+
+  <div class="b-body">
+    <main class="b-main">
+      <section class="b-sec">
+        <div class="sec-head"><h2>验收内容 <span class="sec-count">3</span></h2><span class="sec-note ok">3/3 证据齐全</span></div>
+        <ol class="b-checks">
+          <li class="b-check">
+            <span class="b-num">01</span>
+            <div class="b-check-head">
+              <p>三个候选：来源仓库、文件路径、作者、最近 push 与许可证</p>
+              <span class="b-state">已核对</span>
+            </div>
+            <div class="b-check-body">
+              <p class="b-ev">findings.md · 对比表 3 行 · 均 MIT</p>
+              <pre class="b-ev-box">mattpocock/skills        skills/prototype/SKILL.md      MIT
+emilkowalski/skills      .claude/commands/prototype.md  MIT
+kurenn/claude-prototype  skills/prototype/SKILL.md      MIT</pre>
+            </div>
+          </li>
+          <li class="b-check">
+            <span class="b-num">02</span>
+            <div class="b-check-head">
+              <p>检索方法与反向结论：官方 anthropics/skills 无 prototype</p>
+              <span class="b-state">已核对</span>
+            </div>
+            <div class="b-check-body">
+              <p class="b-ev">gh api/search · code 290 / commands 104</p>
+              <pre class="b-ev-box">anthropics/skills：20 个 SKILL.md 逐个列举 + grep 均无 prototype
+同名范围：290 个 skills/prototype/SKILL.md、104 个 .claude/commands/prototype.md</pre>
+            </div>
+          </li>
+          <li class="b-check">
+            <span class="b-num">03</span>
+            <div class="b-check-head">
+              <p>本机未安装该技能的确认，并澄清与 prototype-elicitation 无关</p>
+              <span class="b-state">已核对</span>
+            </div>
+            <div class="b-check-body">
+              <p class="b-ev">会话回复 · 两处通配匹配均为空</p>
+              <pre class="b-ev-box">~/.claude/skills/*prototype*   无匹配
+~/.dsh/skills/*prototype*      无匹配</pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="b-sec">
+        <div class="sec-head"><h2>关联会话</h2><span class="sec-note">1 个</span></div>
+        <div class="b-sessions">
+          <a class="b-session" href="#" onclick="return false">
+            <span class="avatar">R</span>
+            <span class="b-session-main">
+              <span class="b-session-title">调研并安装 prototype Skill</span>
+              <span class="b-session-sub">Research · 工作会话 · 18:22 有活动</span>
+            </span>
+            <span class="b-session-chip">主会话</span>
+            <span class="b-session-chip muted">idle</span>
+            <svg class="chev"><use href="#i-chev"/></svg>
+          </a>
+        </div>
+      </section>
+
+      <section class="b-sec">
+        <div class="sec-head"><h2>人工改动</h2><span class="sec-note">0</span></div>
+        <div class="b-empty">暂无人工改动。状态与优先级变更会记录在这里。</div>
+      </section>
+    </main>
+
+    <aside class="b-rail">
+      <div class="rail-block">
+        <div class="rail-status">
+          <span class="status-chip" data-status="review"><i></i><span data-status-label>待验收</span></span>
+          <span class="rail-progress"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+        </div>
+        <p class="rail-progress-txt">3 条验收 · 3 条证据</p>
+        <dl class="rail-kv">
+          <dt>工作区</dt><dd>Research</dd>
+          <dt>优先级</dt><dd><select aria-label="优先级"><option>普通</option><option>高</option><option>低</option></select></dd>
+          <dt>最近更新</dt><dd>11/18 18:31</dd>
+          <dt>任务</dt><dd class="mono">t-8f3c</dd>
+        </dl>
+      </div>
+
+      <div class="rail-block">
+        <h3>决策记录</h3>
+        <div class="rail-receipt">
+          <div class="rail-receipt-top"><span class="jev">62%</span><span>采用建议</span></div>
+          <p class="rail-target">Research <span>/</span> 新建会话</p>
+          <div class="rail-receipt-sub">2 个候选 · 18:19 你确认</div>
+          <ul class="cands">
+            <li><span>Research / 新建会话</span><span class="pct">62%</span></li>
+            <li><span>Research / 调研并安装 prototype Skill</span><span class="pct">21%</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rail-block">
+        <h3>时间线</h3>
+        <ol class="rail-tl">
+          <li><time>18:31</time>指挥官刷新证据，验收 3/3</li>
+          <li><time>18:23</time>整理 3 条验收内容</li>
+          <li><time>18:22</time>工作会话产出 findings.md</li>
+          <li><time>18:19</time>采用建议 → New session</li>
+          <li><time>18:12</time>任务已创建（draft）</li>
+        </ol>
+      </div>
+
+      <div class="rail-foot">
+        <button class="btn ghost sm review-only" type="button">返工</button>
+        <button class="btn ghost sm danger" type="button">归档</button>
+      </div>
+    </aside>
+  </div>
+</aside>
+
+<!-- ================================================ 方案 C：事件卷宗 -->
+<aside class="drawer dr-c" id="panel-C" role="dialog" aria-label="任务详情 · 方案 C 事件卷宗">
+  <header class="c-head">
+    <div class="c-top">
+      <span class="c-kicker">TASK · t-8f3c · RESEARCH</span>
+      <button class="icon-btn" type="button" aria-label="关闭详情"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <h1 class="c-title">搜索 Skill：<code>/prototype</code> 的来源与用法</h1>
+    <ol class="c-steps">
+      <li class="done"><i class="bar"></i>待派发</li>
+      <li class="done"><i class="bar"></i>进行中</li>
+      <li class="active" data-step="review"><i class="bar"></i>待验收</li>
+      <li data-step="done"><i class="bar"></i>已完成</li>
+    </ol>
+  </header>
+
+  <div class="c-body">
+    <div class="c-ask review-only">
+      <div class="c-ask-top"><span class="c-ask-kicker">待你确认</span><span class="c-ask-meta">3 条验收 · 3 条证据</span></div>
+      <p class="c-ask-text">指挥官已经整理好验收内容与证据，是否通过验收？</p>
+      <div class="c-ask-actions">
+        <button class="btn success sm" type="button"><svg class="ic"><use href="#i-check"/></svg>通过验收</button>
+        <button class="btn ghost sm" type="button">返工</button>
+      </div>
+    </div>
+
+    <div class="c-feed">
+      <div class="c-day">11 月 18 日 · 今天</div>
+
+      <article class="c-ev">
+        <div class="c-ev-rail"><span class="c-ev-dot" data-kind="status"></span></div>
+        <div class="c-ev-main">
+          <div class="c-ev-meta"><span class="c-ev-kind">更新</span><time>18:31</time></div>
+          <p class="c-ev-text">指挥官刷新证据，验收 3/3</p>
+        </div>
+      </article>
+
+      <article class="c-ev">
+        <div class="c-ev-rail"><span class="c-ev-dot" data-kind="accept"></span></div>
+        <div class="c-ev-main">
+          <div class="c-ev-meta"><span class="c-ev-kind">验收</span><time>18:23</time></div>
+          <p class="c-ev-text">整理 3 条验收内容，证据齐全</p>
+          <div class="c-box">
+            <div class="ck"><svg class="ic"><use href="#i-check"/></svg><span>三个候选：来源仓库、文件路径、作者、最近 push 与许可证 · findings.md</span></div>
+            <div class="ck"><svg class="ic"><use href="#i-check"/></svg><span>官方 anthropics/skills 无 prototype；同名命中 290 / 104 · gh api/search</span></div>
+            <div class="ck"><svg class="ic"><use href="#i-check"/></svg><span>本机未安装该技能，与 prototype-elicitation 无关 · 会话回复</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="c-ev">
+        <div class="c-ev-rail"><span class="c-ev-dot" data-kind="session"></span></div>
+        <div class="c-ev-main">
+          <div class="c-ev-meta"><span class="c-ev-kind">会话</span><time>18:22</time></div>
+          <p class="c-ev-text">工作会话产出 findings.md</p>
+          <a class="c-session" href="#" onclick="return false">
+            <span class="c-session-ic"><svg class="ic"><use href="#i-session"/></svg></span>
+            <span class="c-session-main"><span class="c-session-title">调研并安装 prototype Skill</span><span class="c-session-sub">Research · 工作会话 · idle</span></span>
+            <svg class="chev"><use href="#i-chev"/></svg>
+          </a>
+        </div>
+      </article>
+
+      <article class="c-ev">
+        <div class="c-ev-rail"><span class="c-ev-dot" data-kind="dispatch"></span></div>
+        <div class="c-ev-main">
+          <div class="c-ev-meta"><span class="c-ev-kind">派发</span><time>18:19</time></div>
+          <p class="c-ev-text">采用建议 → <b>Research / 新建会话</b>（Jev 62%，阈值 80%）</p>
+        </div>
+      </article>
+
+      <article class="c-ev">
+        <div class="c-ev-rail"><span class="c-ev-dot" data-kind="created"></span></div>
+        <div class="c-ev-main">
+          <div class="c-ev-meta"><span class="c-ev-kind">创建</span><time>18:12</time></div>
+          <p class="c-ev-text">任务已创建（draft）</p>
+        </div>
+      </article>
+
+      <article class="c-ev c-ev-tail">
+        <div class="c-ev-rail"><span class="c-ev-dot" data-kind="meta"></span></div>
+        <div class="c-ev-main">
+          <div class="c-ev-meta"><span class="c-ev-kind">档案</span></div>
+          <dl class="c-index">
+            <div><dt>工作区</dt><dd>Research</dd></div>
+            <div><dt>优先级</dt><dd>普通</dd></div>
+            <div><dt>人工改动</dt><dd>0</dd></div>
+            <div><dt>任务 ID</dt><dd class="mono">t-8f3c</dd></div>
+          </dl>
+        </div>
+      </article>
+    </div>
+  </div>
+
+  <footer class="c-foot"><span>数据示例 · 2026-11-18</span><span>人工改动 0 · 时间线 5</span></footer>
+</aside>
+
+<!-- ============================================ 方案 D：编年审阅（合并版） -->
+<aside class="drawer dr-d" id="panel-D" role="dialog" aria-label="任务详情 · 方案 D 编年审阅">
+  <header class="d-head">
+    <div class="d-top">
+      <div class="a-eyebrow">
+        <span class="status-chip" data-status="review"><i></i><span data-status-label>待验收</span></span>
+        <span class="sep">·</span><span>Research</span>
+        <span class="sep">·</span><span>普通优先级</span>
+      </div>
+      <div class="d-actions">
+        <button class="icon-btn" type="button" id="d-more" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false"><svg class="ic"><use href="#i-dots"/></svg></button>
+        <button class="icon-btn" type="button" aria-label="关闭详情"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+    <div class="d-menu" id="d-menu" role="menu" hidden>
+      <button type="button" role="menuitem">归档任务</button>
+      <button type="button" role="menuitem">复制任务 ID</button>
+    </div>
+    <h1 class="a-title">搜索 Skill：<code>/prototype</code> 的来源与用法</h1>
+    <p class="a-goal">调研 /prototype 技能的三个候选来源、安装方式与检索证据，交付一份可复核的结论。</p>
+    <ol class="d-steps">
+      <li class="done"><i></i>待派发</li>
+      <li class="done"><i></i>进行中</li>
+      <li class="active"><i></i>待验收</li>
+      <li><i></i>已完成</li>
+    </ol>
+    <div class="a-meta">
+      <span>更新于 18:31</span><i>·</i><span>1 个工作会话</span>
+      <button class="d-jump" type="button" data-jump="d-accept">验收 3/3 ↓</button>
+    </div>
+  </header>
+
+  <div class="d-body">
+    <div class="d-day">11 月 18 日 · 今天</div>
+    <div class="d-feed">
+      <article class="d-ev">
+        <div class="d-ev-rail"><span class="d-ev-dot" data-kind="created"></span></div>
+        <div class="d-ev-main">
+          <div class="d-ev-meta"><time>18:12</time><span class="d-ev-kind">创建</span></div>
+          <p class="d-ev-text">任务已创建（草案）</p>
+        </div>
+      </article>
+
+      <article class="d-ev">
+        <div class="d-ev-rail"><span class="d-ev-dot" data-kind="dispatch"></span></div>
+        <div class="d-ev-main">
+          <div class="d-ev-meta"><time>18:19</time><span class="d-ev-kind">派发</span></div>
+          <p class="d-ev-text">采用建议 → <b>Research / 新建会话</b></p>
+          <div class="receipt">
+            <div class="receipt-top"><span class="jev">62%</span><span class="receipt-txt">低于 80% 阈值，人工确认</span></div>
+            <div class="receipt-sub"><span>2 个候选</span><i>·</i><span>你确认于 18:19</span></div>
+            <details class="receipt-more">
+              <summary><span>候选与评分</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+              <ul class="cands">
+                <li><span>Research / 新建会话</span><span class="pct">62%</span></li>
+                <li><span>Research / 调研并安装 prototype Skill</span><span class="pct">21%</span></li>
+              </ul>
+            </details>
+          </div>
+        </div>
+      </article>
+
+      <article class="d-ev">
+        <div class="d-ev-rail"><span class="d-ev-dot" data-kind="session"></span></div>
+        <div class="d-ev-main">
+          <div class="d-ev-meta"><time>18:22</time><span class="d-ev-kind">会话</span></div>
+          <p class="d-ev-text">工作会话产出 findings.md</p>
+          <a class="session d-session" href="#" onclick="return false">
+            <span class="avatar">R</span>
+            <span class="session-main">
+              <span class="session-title">调研并安装 prototype Skill</span>
+              <span class="session-sub">Research · 工作会话 · 18:22 有活动</span>
+            </span>
+            <span class="session-status">idle</span>
+            <svg class="chev"><use href="#i-chev"/></svg>
+          </a>
+        </div>
+      </article>
+
+      <article class="d-ev" id="d-accept">
+        <div class="d-ev-rail"><span class="d-ev-dot" data-kind="accept"></span></div>
+        <div class="d-ev-main">
+          <div class="d-ev-meta"><time>18:23</time><span class="d-ev-kind">验收</span><span class="d-ev-ok">3/3 证据齐全</span></div>
+          <p class="d-ev-text">指挥官整理 3 条验收内容</p>
+          <div class="d-checks-panel">
+            <ol class="checklist">
+              <li class="check">
+                <span class="check-dot"><svg class="ic"><use href="#i-check"/></svg></span>
+                <div class="check-main">
+                  <p class="check-text">三个候选：来源仓库、文件路径、作者、最近 push 与许可证</p>
+                  <details class="ev">
+                    <summary><span class="ev-k">证据</span><span class="ev-t">findings.md · 对比表 3 行 · 均 MIT</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+                    <pre class="ev-d">mattpocock/skills        skills/prototype/SKILL.md        MIT
+emilkowalski/skills      .claude/commands/prototype.md    MIT
+kurenn/claude-prototype  skills/prototype/SKILL.md        MIT</pre>
+                  </details>
+                </div>
+              </li>
+              <li class="check">
+                <span class="check-dot"><svg class="ic"><use href="#i-check"/></svg></span>
+                <div class="check-main">
+                  <p class="check-text">检索方法与反向结论：官方 anthropics/skills 无 prototype</p>
+                  <details class="ev">
+                    <summary><span class="ev-k">证据</span><span class="ev-t">gh api/search · code 290 / commands 104</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+                    <pre class="ev-d">anthropics/skills：20 个 SKILL.md 逐个列举 + grep 均无 prototype
+同名范围：290 个 skills/prototype/SKILL.md、104 个 .claude/commands/prototype.md</pre>
+                  </details>
+                </div>
+              </li>
+              <li class="check">
+                <span class="check-dot"><svg class="ic"><use href="#i-check"/></svg></span>
+                <div class="check-main">
+                  <p class="check-text">本机未安装该技能的确认，并澄清与 prototype-elicitation 无关</p>
+                  <details class="ev">
+                    <summary><span class="ev-k">证据</span><span class="ev-t">会话回复 · 两处通配匹配均为空</span><svg class="chev"><use href="#i-chev"/></svg></summary>
+                    <pre class="ev-d">~/.claude/skills/*prototype*   无匹配
+~/.dsh/skills/*prototype*      无匹配</pre>
+                  </details>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </article>
+
+      <article class="d-ev">
+        <div class="d-ev-rail"><span class="d-ev-dot" data-kind="status"></span></div>
+        <div class="d-ev-main">
+          <div class="d-ev-meta"><time>18:31</time><span class="d-ev-kind">更新</span></div>
+          <p class="d-ev-text">指挥官刷新证据，验收 3/3</p>
+        </div>
+      </article>
+
+      <article class="d-ev d-now">
+        <div class="d-ev-rail"><span class="d-now-dot"></span></div>
+        <div class="d-now-main">
+          <strong>现在 · <span data-status-label>待验收</span></strong>
+          <p>等待你的确认</p>
+        </div>
+      </article>
+    </div>
+  </div>
+
+  <footer class="a-foot review-only">
+    <div class="a-foot-main">
+      <span class="a-foot-meta">验收为人工确认，指挥官不评估结果</span>
+      <div class="a-foot-actions">
+        <button class="btn ghost" type="button">返工</button>
+        <button class="btn success" type="button"><svg class="ic"><use href="#i-check"/></svg>通过验收</button>
+      </div>
+    </div>
+    <p class="a-foot-hint">返工会把续做 brief 发回原会话；验收后任务进入已完成。</p>
+  </footer>
+  <footer class="a-foot draft-only">
+    <div class="a-foot-main"><span class="a-foot-meta">草案 · 当前不在验收流程</span></div>
+  </footer>
+</aside>
+
+<!-- ======================================================== 方案切换器 -->
+<div class="switcher" role="group" aria-label="原型方案切换">
+  <button class="sw-arrow" type="button" data-nav="-1" aria-label="上一个方案"><svg class="ic"><use href="#i-chev"/></svg></button>
+  <span class="sw-name"><span class="sw-kicker">方案</span><b id="sw-name">D · 编年审阅</b></span>
+  <button class="sw-arrow" type="button" data-nav="1" aria-label="下一个方案"><svg class="ic" style="transform:rotate(-90deg)"><use href="#i-chev"/></svg></button>
+  <span class="sw-div"></span>
+  <span class="sw-seg" role="group" aria-label="示例任务状态">
+    <button type="button" data-status-choice="review">待验收</button>
+    <button type="button" data-status-choice="draft">草案</button>
+  </span>
+  <button class="sw-icon" type="button" id="theme-btn" aria-label="切换主题"><svg class="ic"><use href="#i-moon"/></svg></button>
+  <span class="sw-hint">← → / 1 2 3 4</span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

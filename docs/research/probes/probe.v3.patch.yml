@@ -1,0 +1,11 @@
+# scout 探针覆盖层 v3：web profile + capabilityPanel + sessionController 验证
+- insert:
+    - id: capability-panel
+      name: 'dsh-capability-settings'
+      config:
+        agentsHome: /tmp/dsh-commander-probe/agents
+    - id: scout-probe-v3
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/docs/research/probes/probe-v3.mjs'
+      config:
+        out: /tmp/dsh-commander-probe/evidence/v3.json
+        cwd: /tmp/dsh-commander-probe/ws1

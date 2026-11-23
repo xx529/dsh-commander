@@ -1,0 +1,6 @@
+# 侦察覆盖层（临时）：只插入观察插件；能力面板由 profile bundles 自带
+- insert:
+    - id: probe-recon
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/validation/probes/probe-recon.mjs'
+      config:
+        out: /Users/lzx/Documents/GitHub/dsh-commander/.probe/evidence/recon.json

@@ -1,0 +1,7 @@
+# V3 会话创建/模型选择/prompt/resume 探针覆盖层（stub LLM provider：probe-stub/stub-1）
+- insert:
+    - id: probe-v3
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/validation/probes/probe-v3.mjs'
+      config:
+        outDir: /Users/lzx/Documents/GitHub/dsh-commander/docs/validation/v3-artifacts
+        cwd: /Users/lzx/Documents/GitHub/dsh-commander/.probe/ws-v3

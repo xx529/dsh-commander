@@ -1,66 +1,111 @@
 # DSH Commander · 指挥官
 
-> 跑在 DSH 里的 AI 指挥官：一句话下命令，它澄清、用 Jev 判定派发目标、交给合适的工作区会话、维护看板，并把工作会话的产出整理成任务与验收内容；只有派发置信度不足和最终验收才需要你拍板。
-
-当前阶段：**产品设计 v1.8 + 原型 v3（DSH 内嵌形态）**（未开始编码）。
+> 跑在 DSH（DeepSeek Harness）里的指挥官调度插件：一个悬浮球/面板，一句话下命令，指挥官澄清、判定派发目标、把任务交给合适的工作区会话、维护看板，并把工作会话的产出整理成验收内容；**只有派发确认和最终验收需要你拍板**。
 
 ---
 
-## 交付物
+## 当前状态（2026-11-22）
 
-| 文件 | 内容 |
+- **M0 / M1 / M1R / M2 / M3 已实现并通过验收**：M0 悬浮球+面板+绑定、M1 工具/全确认派发、M1R 自定义 attach、M2 看板（六列/详情抽屉/人工改动/取消/归档/恢复）、M3 闭环（turn/end 注入、`commander_task_report`、审批悬浮卡、accept/continue、播报）；**任务状态机定案 v1.0** 已实现：统一迁移入口、`commander_task_get`、`commander_task_update` action enum + expectedRevision、`dependsOn`/ready 依赖编排与 `[task-unblocked]`/`[task-dependency-blocked]` 提醒（契约 `docs/architecture/task-state-machine-final.md`）。
+- **M5 多轮追加派发已实现**：review 任务可继续派发（round+1、上一轮验收进历史、默认原会话/可换工作区）；看板「返工」统一为「继续派发请求」→ 通知指挥官再派发；详情按轮展示用户原话与派发 brief 原文，看板卡显示「第 N 轮」。契约见 `docs/architecture/m5-continue-dispatch.md`。
+- **报告材料（方案 A）已实现**：每轮「整理报告」的结论下新增「依据与材料」，支持外链、本地文档、本地/远程图片；`commander_task_report` 显式材料 + 工作会话 `present` 自动归并 + 最后回复中的 Markdown 链接/图片自动抓取，本地图片走签名资产路由。契约见 `docs/architecture/materials-contract-patch.md`。
+- 测试：`pnpm --filter dsh-commander test` → **373/373 pass**；另有隔离真实 Host e2e（m1/m1r/m23）、client harness（smoke 51/51 + interact 182/182）。
+- **V5 自动派发门禁未通过（FAIL）**：用户决策为**忽略 V5 门禁、降级为「每次派发人工确认」**（`autoDispatch=false`，全确认模式）。**不得表述为 V5 PASS**；V5 报告与重开门条件见 `docs/validation/V0-GATE.md`。
+- **M4 P1 原生壳已实现**（macOS Tauri 2 壳：独立悬浮球 + 面板 + Option+Space + 位置持久化 + 看板/验收 + 条件审批 + 双球互斥，见 `docs/architecture/native-shell-contract.md`）；跨 Space/全屏、问答卡、Windows 与 V6–V8 尚未验证。
+- 插件已可安装到 DSH profile，live 实机验证过球/面板/确认卡/绑定切换。
+
+---
+
+## 快速开始
+
+```bash
+# 1) 依赖 / 构建 / 类型检查 / 测试
+pnpm install
+pnpm --filter dsh-commander build
+pnpm --filter dsh-commander typecheck
+pnpm --filter dsh-commander test          # 373/373
+pnpm --filter dsh-commander build:native  # 可选：macOS 原生壳（需要 Rust + Xcode CLT）
+bash tools/dev/install-native-shell.sh    # 只读预检：产物/签名/profile + 打印安装命令
+
+# 2) 校验 Client bundle（官方 ModuleLoader wrapper）
+node tools/dev/verify-bundle.mjs packages/dsh-commander/lib/client.js dsh-commander
+```
+
+**安装到 DSH profile（用户操作；会重启/重载 DSH）**
+
+```bash
+# 首次安装（file: 本地包；路径按本机实际）
+dsh plugin --profile desktop add /Users/lzx/Documents/GitHub/dsh-commander/packages/dsh-commander
+```
+
+重载规则（**重要**）：
+- 仅 **Client 已存在文件** 的改动：构建后**硬刷新页面**即可（§安装副本是 hardlink）；
+- **新增 lib 文件 / Host 代码 / `dsh.client.inject` 变更**：必须 **remove + add 重装**（或 `plugin_manager remove_bundle/install_bundle`）+ **重启 DSH**；只刷新/只重启不会带入新文件；
+- 升级前可跑 `bash tools/dev/install-live-m0.sh` 做只读预检（lib 文件集一致性）。
+
+**关键验证脚本（均不碰 live，使用一次性 `DSH_HOME`）**
+
+```bash
+node packages/dsh-commander/tests/e2e/m1-e2e.mjs        # M1 派发
+node packages/dsh-commander/tests/e2e/m1r-e2e.mjs       # 自定义 attach
+node packages/dsh-commander/tests/e2e/bind-select-e2e.mjs  # 设置页选择已有会话
+node packages/dsh-commander/tests/e2e/m23-e2e.mjs       # M2/M3
+bash tools/dev/check-m2m3.sh                            # M2/M3 隔离检查
+bash tools/dev/client-repro.sh                          # 无头 Chrome 复现 client 加载/console
+node tools/dev/verify-live-m0.mjs --url '<带 token 的页面 URL>'   # live 健检查
+```
+
+---
+
+## 仓库结构
+
+```
+packages/dsh-commander/     # 唯一插件包（双半 bundle）
+  src/host/                 # Host：domain/stores、/commander 路由+SSE、统一状态机、派发/依赖提醒、turn/end 注入、工具
+  src/client/               # Client：shell.overlay 球+面板、main keyed 六列看板、设置页、审批悬浮卡
+  tests/                    # unit / integration / client(harness) / e2e
+  lib/                      # 构建产物（lib/host/**、lib/client.js）
+tools/                      # 构建/校验/隔离复现/验收脚本（dev/、validation/、eval/）
+docs/                       # 产品/架构/交接 + architecture/、validation/（验收/审计）、eval/、research/、tasks/
+prototype/                  # v3 交互原型与截图（视觉参照）
+research/                   # 调研笔记；第三方 clone（awesome/jarvis/stardeck/super-kanban 等）本地保留、不入库
+```
+
+---
+
+## 文档索引
+
+| 文档 | 内容 |
 |---|---|
-| [`docs/PRODUCT-DESIGN.md`](docs/PRODUCT-DESIGN.md) | 产品设计 v1.8：职责边界、Jev 派发、自定义目标、工作区白名单与摘要、指挥官整理验收、设置页、DSH 主题规格、数据模型、里程碑 |
-| [`docs/NEXT-PHASE.md`](docs/NEXT-PHASE.md) | 下一阶段交接：V0 验证门禁、M0/M1 范围、验收标准、停止条件 |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 架构设计 v2.4：最后回复注入触发、无投影的任务记录、指挥官工具与 Jev 预筛、任务状态机 |
-| [`docs/eval/jev-dispatch-eval.md`](docs/eval/jev-dispatch-eval.md) | Jev 派发 50 案例评估方案（开发前门禁）与阈值校准 |
-| [`research/RESEARCH.md`](research/RESEARCH.md) | 同类插件与技术路线调研总览：样本矩阵、可借鉴点、必须自研项、Jev 选型 |
-| [`research/notes/jarvis.md`](research/notes/jarvis.md) | 贾维斯：Swift 悬浮窗、审批处理、会话托管、模型复用（766 行，含行号证据） |
-| [`research/notes/stardeck.md`](research/notes/stardeck.md) | stardeck：指挥链角色、状态机、验收门、治理教训（429 行） |
-| [`research/notes/kanban-commander.md`](research/notes/kanban-commander.md) | Super Kanban + lxl-commander：任务提取、看板模型、委派协议（604 行） |
-| [`research/notes/float-tech.md`](research/notes/float-tech.md) | 系统级悬浮窗技术选型：Swift / Tauri / Electron / Win32 对比（390 行） |
-| [`research/notes/dsh-capabilities.md`](research/notes/dsh-capabilities.md) | DSH 插件扩展点核对：槽位、会话、审批、调度、持久化（462 行） |
-| [`prototype/README.md`](prototype/README.md) | 原型 v3 说明：六屏、交互、DSH 设计令牌、截图索引 |
-| `prototype/app/` | 可交互原型源码（index.html / styles.css / app.js） |
-| `prototype/shots/` | 六屏截图 + 浅色/1280/交互态 |
+| [`docs/PRODUCT-DESIGN.md`](docs/PRODUCT-DESIGN.md) | 产品设计 v1.8：职责边界、Jev 派发、看板、验收、设置页、数据模型 |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 架构 v2.4：双半插件、记录模型、状态机、工具、注入 |
+| [`docs/architecture/task-state-machine-final.md`](docs/architecture/task-state-machine-final.md) | **任务状态机定案 v1.0**：9 状态/迁移矩阵/工具/依赖/六列看板 |
+| [`docs/NEXT-PHASE.md`](docs/NEXT-PHASE.md) | 阶段范围/验收/停止条件（含冻结决策） |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md) | **开发交接**：现状/快速上手/契约/坑/剩余项/开发约定 |
+| [`docs/architecture/implementation-plan.md`](docs/architecture/implementation-plan.md) | 实现蓝图与 M0–M3 契约（含 m0/m1/m2m3 补丁） |
+| [`docs/validation/`](docs/validation/) | V0 门禁、M0/M1/M1R/M2/M3 验收与审计、cleanup-report |
+| [`docs/validation/cleanup-report.md`](docs/validation/cleanup-report.md) | 仓库清理记录（临时证据/真实数据已清理，源码/文档/测试保留） |
+| [`docs/eval/`](docs/eval/) | V5 Jev 派发评测（方案/报告/冻结数据） |
+| [`prototype/README.md`](prototype/README.md) | 原型 v3 说明与截图索引 |
 
 ---
 
-## 职责边界（本轮最重要的修订）
+## 已知限制（务必先读）
 
-| 角色 | 做 | 不做 |
-|---|---|---|
-| **指挥官** | 澄清、派发、维护看板状态、**整理工作会话产出为验收内容并更新看板**、播报 | **不拆分工作、不评估**、不执行、不碰审批 |
-| **工作会话** | 自己拆分工作、执行、交付、在会话里说明产出 | 不定义验收流程、不写清单、不维护看板、不做派发决策 |
-| **Jev** | 对"派到哪个工作区/会话"给出带置信度的判定 | 不生成任务、不评估结果 |
-| **你** | 低置信度派发确认（可采用/自定义）、审批、验收、人工改看板 | —— |
-
----
-
-## 五个核心结论
-
-1. **没有现成插件同时满足四条核心能力。** 最接近的组合是贾维斯 × Super Kanban × stardeck × lxl-commander；本项目与 Super Kanban **无任何数据或能力对齐**。
-2. **一期做在 DSH 内部。** `shell.overlay` 做悬浮球与面板，看板做整页/侧栏 tab；系统级置顶留到二期原生壳。
-3. **派发由 Jev 门控。** 模型只提候选，`dispatch_task` 调用 Jev 打分；置信度 < 80% 或判定不一致 → 不派发，返回 clarify；用户可采用建议，也可**自定义工作区 + 会话**。
-4. **验收由指挥官整理、工作会话产出、人确认。** 指挥官不拆解、不评估，只把产出整理成清单与证据并更新看板。
-5. **审批只在界面层。** 审批卡可「打开会话」，但不进指挥官上下文、不进看板、不落任务账本。
+1. **全确认模式**：当前默认每次派发都需人工确认（`autoDispatch=false`）；V5 未通过，**不要擅自开启自动派发/放宽阈值**（重开门条件见 `docs/validation/V0-GATE.md`）。
+2. **会话列表性能边界**：fresh 大工作区 `limit=50` 时 >2s（capability-settings 实测 3.85–5.30s）；**UI 已固定 `limit=20`**（0.18–1.2s）。后端分页/缓存为后续优化项，放大 limit 前先加分页。
+3. **V6–V8 未做正式验证**：V6 审批双处渲染、V7 Host→Client 推送、V8 插件重载目前只有实现/事实证据，缺正式验证记录。
+4. **M4 P1 已做、P2 未做**：macOS Tauri 壳可脱离 DSH 窗口运行；跨所有 Space/全屏、审批/问答接管、Windows 属 P2。壳未签名，仅限本机 `file:` 安装。
+5. **工程收尾**：git 仍有未提交改动、未接 CI、缺 `docs/retro` 复盘；改动前先看 `docs/HANDOVER.md`。
+6. **看板不再支持拖拽改状态**：人只保留 accept/archive/restore/cancel 按钮；`PATCH /board/tasks/:id` 仅 priority/title。
+7. **live UI 部分项为环境性 UNVERIFIED**（物理点击/截图能力限制），替代证据为 harness/e2e/单测；详见 `docs/validation/m2-accept.md`、`m3-accept.md` 与 HANDOVER §5（含 UNVERIFIED 清单）。
 
 ---
 
-## 设计要点
+## 不做什么
 
-- **工作区可控**：白名单勾选 + 每个工作区摘要（人工/模型），摘要进入 Jev 判定输入。
-- **指挥官可重绑**：它本身是某工作区的一个 session，设置里可「绑定到新会话 / 选择已有会话」。
-- **能力复用**：不重复列工具，跳转 DSH 能力面板。
-- **看板自主维护**：指挥官增删改不需要确认；你的人工改动通过注入消息反向同步，不弹窗。
-- **无催办按钮**：是否追问由指挥官策略决定。
-- **Jev Key**：优先环境变量（如 `JEV_API_KEY`），也可手动填写存凭据库；无并发上限配置，不同会话并行、同一会话排队。
-- **能力策略**：每个工作区只有"继承 / 自动选择"两档；指挥官只提能力需求建议，能力范围由 DSH 能力面板配置决定；自动选择只在范围内补充、会话级生效。
-
----
-
-## 下一步
-
-1. 评审 `docs/PRODUCT-DESIGN.md`，确认 §19 的 4 个开放问题（阈值分档、会话承载、看板位置、日结）。
-2. 原型定稿后进入 M0：Client 插件 shell.overlay + 指挥官会话绑定 + 设置页骨架。
-3. 写代码前先验证 `research/notes/dsh-capabilities.md` 附录的 6 项待实测。
+- 不改 DSH 冻结决策（见 `docs/NEXT-PHASE.md` §2）；
+- 不自建能力目录/Resolver、不做 scheduler/投影/事件表；一期不实现原生壳（M4 P1 例外，见契约文档）；
+- 不重复实现 DSH 已有能力（能力选择交给 DSH 能力面板；审批只在界面层）；
+- 指挥官**不拆分工作、不评估结果**，只整理产出为验收内容；
+- 不引入新概念/新事件类型/新表；只有 DSH 内形态。

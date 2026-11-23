@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; width: 900px; height: 560px; overflow: hidden;
+    background: #f7f8fa; color: #111318;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { padding: 28px 32px; }
+  .kicker { color: #8a8f96; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  h1 { margin: 6px 0 0; font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+  .sub { margin-top: 5px; color: #6b7078; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 52px 1fr; gap: 0; margin-top: 24px; align-items: stretch; }
+  .card { border: 1px solid #e3e6ea; border-radius: 12px; background: #fff; padding: 16px 18px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+  .card.current { border-color: #b9c9f2; background: #f8faff; }
+  .card.new { border-color: #ead9b4; background: #fffdf7; }
+  .head { display: flex; align-items: center; gap: 8px; }
+  .name { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 14px; font-weight: 600; }
+  .tag { padding: 2px 7px; border-radius: 5px; font-size: 10px; font-weight: 600; }
+  .current .tag { background: #e7edff; color: #315dc7; }
+  .new .tag { background: #f8eed3; color: #9a6a13; }
+  dl { margin: 14px 0 0; display: grid; grid-template-columns: 82px 1fr; gap: 8px 10px; font-size: 11.5px; }
+  dt { color: #8a8f96; }
+  dd { margin: 0; color: #30343a; font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 11px; overflow-wrap: anywhere; }
+  .bridge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #9aa0a8; }
+  .line { width: 1px; height: 46px; background: repeating-linear-gradient(to bottom, #c9cdd3 0 4px, transparent 4px 8px); }
+  .bridge span { font-size: 9.5px; writing-mode: vertical-rl; letter-spacing: .08em; background: #f7f8fa; padding: 4px 0; }
+  .note { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding: 10px 13px; border: 1px solid #e3e6ea; border-radius: 9px; background: #fff; color: #5d6268; font-size: 11.5px; }
+  .note b { color: #15803d; font-weight: 600; }
+  .note .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="kicker">Htdot-OrderCenter · 兼容性核对</div>
+    <h1>GLM-4.6 与 GLM-5.3-Flash-Legal 的 SKU 边界</h1>
+    <div class="sub">结论：两者不在同一 API 别名下，法律版是独立 SKU；窗口内未发现 breaking change。</div>
+    <div class="grid">
+      <section class="card current">
+        <div class="head"><span class="name">glm-4.6</span><span class="tag">订单中心在用</span></div>
+        <dl>
+          <dt>API 别名</dt><dd>glm-4.6</dd>
+          <dt>调用方式</dt><dd>paas/v4 · chat.completions</dd>
+          <dt>订单链路</dt><dd>是 · 生产流量</dd>
+          <dt>窗口内变更</dt><dd>无</dd>
+        </dl>
+      </section>
+      <div class="bridge"><div class="line"></div><span>独立别名</span><div class="line"></div></div>
+      <section class="card new">
+        <div class="head"><span class="name">glm-5.3-flash-legal</span><span class="tag">独立 SKU</span></div>
+        <dl>
+          <dt>API 别名</dt><dd>glm-5.3-flash-legal</dd>
+          <dt>基座</dt><dd>GLM-5.3-Flash</dd>
+          <dt>订单链路</dt><dd>否 · 需显式接入</dd>
+          <dt>窗口内变更</dt><dd>新增 SKU · 非 breaking</dd>
+        </dl>
+      </section>
+    </div>
+    <div class="note"><span class="dot"></span><span>建议：订单中心保持 <b>glm-4.6</b> 不变；法律版能力作为独立试点接入，不进入现有订单链路。</span></div>
+  </div>
+</body>
+</html>

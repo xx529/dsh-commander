@@ -1,0 +1,15 @@
+{
+  "name": "dsh-commander-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter dsh-commander build",
+    "build:host": "pnpm --filter dsh-commander build:host",
+    "build:client": "pnpm --filter dsh-commander build:client",
+    "typecheck": "pnpm --filter dsh-commander typecheck",
+    "test": "pnpm --filter dsh-commander test",
+    "prototype:panel": "python3 -m http.server 4310 --directory prototype/panel-redesign",
+    "spike:build": "bash tools/dev/spike-build.sh",
+    "spike:smoke": "bash tools/dev/smoke-m0.sh"
+  }
+}

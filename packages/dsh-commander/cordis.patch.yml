@@ -1,0 +1,6 @@
+# 双半 bundle：Host 行由本 patch 插入；Client 半由 dsh.client 扫描，
+# 不进 patch。安装到 profile 后由 dsh 把 packages/dsh-commander 追加到
+# dsh.profile.bundles。
+- insert:
+    - id: commander
+      name: 'dsh-commander'

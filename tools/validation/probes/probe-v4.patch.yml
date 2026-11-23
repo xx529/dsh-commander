@@ -1,0 +1,6 @@
+# V4 storageDomain 探针覆盖层（commander 域，per-record）
+- insert:
+    - id: probe-v4
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/validation/probes/probe-v4.mjs'
+      config:
+        outDir: /Users/lzx/Documents/GitHub/dsh-commander/docs/validation/v4-artifacts

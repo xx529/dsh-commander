@@ -1,0 +1,878 @@
+{
+  "generatedAt": "2026-11-17T08:28:07.367Z",
+  "home": "/Users/lzx/.dsh",
+  "layout": {
+    "sessionsRoot": "/Users/lzx/.dsh/sessions",
+    "storagesRoot": "/Users/lzx/.dsh/storages"
+  },
+  "workspaceStore": {
+    "workspaces": [
+      {
+        "path": "/Users/lzx/Documents/sunteng/miraclip_ai",
+        "titlePresent": true,
+        "sessionCount": 5,
+        "createdAt": "2026-08-13T16:51:40.011Z",
+        "updatedAt": "2026-11-10T08:29:29.552Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh",
+        "titlePresent": true,
+        "sessionCount": 8,
+        "createdAt": "2026-08-18T02:47:19.748Z",
+        "updatedAt": "2026-11-03T08:55:35.814Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/192.168.98.152-sunteng-22/mira-ai",
+        "titlePresent": true,
+        "sessionCount": 3,
+        "createdAt": "2026-09-27T17:33:58.274Z",
+        "updatedAt": "2026-11-09T08:56:47.624Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/192.168.98.152-sunteng-22/mira-live",
+        "titlePresent": true,
+        "sessionCount": 1,
+        "createdAt": "2026-09-27T17:36:41.337Z",
+        "updatedAt": "2026-10-05T14:42:18.733Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/LiveShopping",
+        "titlePresent": true,
+        "sessionCount": 6,
+        "createdAt": "2026-09-28T01:27:40.505Z",
+        "updatedAt": "2026-11-05T17:58:52.821Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/research",
+        "titlePresent": true,
+        "sessionCount": 135,
+        "createdAt": "2026-09-28T03:23:55.259Z",
+        "updatedAt": "2026-11-15T15:44:32.830Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/agent-workspace",
+        "titlePresent": true,
+        "sessionCount": 59,
+        "createdAt": "2026-09-28T14:47:03.976Z",
+        "updatedAt": "2026-11-16T09:42:42.592Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/Evoke",
+        "titlePresent": true,
+        "sessionCount": 7,
+        "createdAt": "2026-09-29T02:25:07.977Z",
+        "updatedAt": "2026-10-24T15:17:38.654Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/Raise",
+        "titlePresent": true,
+        "sessionCount": 8,
+        "createdAt": "2026-10-07T14:51:19.627Z",
+        "updatedAt": "2026-10-24T16:11:48.773Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/ai.miraclips.com-mira-22/miraclips",
+        "titlePresent": true,
+        "sessionCount": 3,
+        "createdAt": "2026-10-10T07:17:25.786Z",
+        "updatedAt": "2026-11-10T01:13:54.870Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-task-gantt",
+        "titlePresent": true,
+        "sessionCount": 10,
+        "createdAt": "2026-10-10T15:55:54.743Z",
+        "updatedAt": "2026-11-12T16:11:44.470Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/192.168.98.221-miraclips-22/RemoteTTS",
+        "titlePresent": true,
+        "sessionCount": 2,
+        "createdAt": "2026-10-14T01:47:18.804Z",
+        "updatedAt": "2026-10-29T08:14:47.261Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/192.168.98.221-miraclips-22/dsh-setup",
+        "titlePresent": true,
+        "sessionCount": 7,
+        "createdAt": "2026-10-14T07:18:46.170Z",
+        "updatedAt": "2026-11-16T01:30:01.346Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-capability-settings",
+        "titlePresent": true,
+        "sessionCount": 55,
+        "createdAt": "2026-10-15T16:51:36.116Z",
+        "updatedAt": "2026-11-17T07:04:59.627Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-trace-inspect",
+        "titlePresent": true,
+        "sessionCount": 26,
+        "createdAt": "2026-10-16T17:06:48.757Z",
+        "updatedAt": "2026-11-17T00:58:37.345Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/192.168.31.223-raisehuang-22/Desktop",
+        "titlePresent": true,
+        "sessionCount": 1,
+        "createdAt": "2026-10-20T14:36:45.276Z",
+        "updatedAt": "2026-10-22T03:42:14.651Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-terminal-panel",
+        "titlePresent": true,
+        "sessionCount": 9,
+        "createdAt": "2026-10-26T02:40:41.840Z",
+        "updatedAt": "2026-11-13T04:50:30.106Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-shell-cmd",
+        "titlePresent": true,
+        "sessionCount": 16,
+        "createdAt": "2026-10-26T11:11:21.639Z",
+        "updatedAt": "2026-11-09T14:51:59.083Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-team-group",
+        "titlePresent": true,
+        "sessionCount": 9,
+        "createdAt": "2026-10-28T01:19:29.541Z",
+        "updatedAt": "2026-11-12T16:38:06.882Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-htdot-bridge",
+        "titlePresent": true,
+        "sessionCount": 3,
+        "createdAt": "2026-10-28T07:34:42.845Z",
+        "updatedAt": "2026-11-08T15:01:02.040Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/sunteng/htdot-order-demand-skill",
+        "titlePresent": true,
+        "sessionCount": 42,
+        "createdAt": "2026-11-02T10:45:08.987Z",
+        "updatedAt": "2026-11-09T02:57:11.695Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/sunteng/htdot-order-demand-skill/test",
+        "titlePresent": true,
+        "sessionCount": 9,
+        "createdAt": "2026-11-05T03:54:31.312Z",
+        "updatedAt": "2026-11-09T09:16:03.223Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/118.145.200.11-root-22/root",
+        "titlePresent": true,
+        "sessionCount": 1,
+        "createdAt": "2026-11-10T02:08:00.456Z",
+        "updatedAt": "2026-11-10T02:08:00.706Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-quick-action",
+        "titlePresent": true,
+        "sessionCount": 8,
+        "createdAt": "2026-11-10T14:52:15.698Z",
+        "updatedAt": "2026-11-16T09:15:06.730Z"
+      },
+      {
+        "path": "/Users/lzx/.dsh/remote-workspaces/192.168.98.76-sunteng-22/ollama_test",
+        "titlePresent": true,
+        "sessionCount": 3,
+        "createdAt": "2026-11-11T06:54:53.229Z",
+        "updatedAt": "2026-11-11T07:20:44.668Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/sunteng/htdot-project",
+        "titlePresent": true,
+        "sessionCount": 15,
+        "createdAt": "2026-11-11T09:28:40.923Z",
+        "updatedAt": "2026-11-17T06:17:35.432Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/sunteng/Htdot-OrderCenter",
+        "titlePresent": true,
+        "sessionCount": 2,
+        "createdAt": "2026-11-12T02:44:59.529Z",
+        "updatedAt": "2026-11-12T02:49:35.489Z"
+      },
+      {
+        "path": "/Users/lzx/Documents/GitHub/dsh-commander",
+        "titlePresent": true,
+        "sessionCount": 13,
+        "createdAt": "2026-11-16T08:45:51.739Z",
+        "updatedAt": "2026-11-17T08:10:06.527Z"
+      }
+    ],
+    "archived": [
+      "session-c4df4d24-4a9c-4cff-b308-0ea2b58ce0bd",
+      "session-9fe99def-33d6-4bc9-a1c8-b107a6e12ed0",
+      "session-25d8ef8e-28db-4701-97c8-a356d11ed46b",
+      "session-c3ed3ed2-4575-4e9a-a5c8-20483b800c68",
+      "session-de30fcd8-ec3e-454a-afeb-48405694a860",
+      "session-b03a0b46-24b9-418e-a0e0-1fc884730f2b",
+      "session-e39d2854-f303-429a-b087-74efef06e65e",
+      "session-ba096212-801a-433c-af1e-0b27bbc086ab",
+      "session-8f3241eb-98aa-4458-a235-53f455015ec3",
+      "session-aa8dbeb9-f496-4838-8983-c4ba75ca57d8",
+      "session-8f79d112-d110-46b1-88c6-d58db11cf95a",
+      "session-069f6235-8189-47d5-ad34-b49c9e786467",
+      "session-f8fa67b4-666d-45b9-a7f1-4c2d938d3db0",
+      "session-987dadfd-24bb-446d-899d-4de3c77c20dc",
+      "session-1d43921c-c573-43fd-88b8-459aa587a103",
+      "session-1bfe2f20-1930-4081-8493-838dd799d4dc",
+      "session-04ce7d7e-3e82-4069-999a-d4cc93c0071a",
+      "session-2e8de526-b29a-46fd-965e-552e185b17e7",
+      "session-395f71a1-6518-4246-8365-9cb93df813d4",
+      "session-91abf5f5-e99a-4d71-977a-b0c21d763d37",
+      "session-bd704e08-ad20-4f65-86f2-70246c31d8e7",
+      "session-7257b511-a5f0-4a5c-970b-f1494760cc47",
+      "session-ff07a6a0-006c-44a1-b358-9fdd1e2d0141",
+      "session-3303225c-d26b-46cb-87b5-71529680c1b6",
+      "session-b24e019d-bf9a-43e6-97af-3cc9562dbe50",
+      "session-9510223f-804a-47c3-868a-07db8d7760b4",
+      "session-7c829553-8dfb-4c34-bcd1-4e47ee6483b7",
+      "session-db96c8a8-5406-429d-961d-15a99d69c071",
+      "session-7935a996-a1ef-42c3-a3ed-d078e852328c",
+      "session-96ba5a0d-f0d9-4345-8fe0-4a90408e6a61",
+      "session-2e676267-9840-4f1c-bc80-34c398ad045c",
+      "session-f5686700-4687-4ff4-a283-3a355d9f069c",
+      "session-b3e50df5-93f0-4f4d-9c26-1127b3c7968d",
+      "session-fddd07b8-ae52-4edb-965b-73f36d323878",
+      "session-6f88372e-4ce3-4124-87dc-814c58f826ee",
+      "session-db337f78-dbc7-4f0e-ab55-d8ec3ed2944d",
+      "session-c22707cf-24ba-4bbb-a51f-283a7013e728",
+      "session-5b0f2a61-dc67-4a84-951c-eb7b769d5403",
+      "session-34e8b369-e961-4aa7-9876-23ebc2ea4262",
+      "session-ddff80a0-ca3d-4a62-a528-c598db72f0a2",
+      "session-549ae469-920a-4db5-a76c-e4d0a2719aa0",
+      "session-07d0d23c-908b-4802-8beb-a2a9dc9b9d27",
+      "session-b6afb595-4a32-45b3-9754-16cca5ae0631",
+      "session-c21cf370-cf9c-4beb-913a-42ab57d1a9ee",
+      "session-481f769a-a4fa-4b28-b463-53665da53c32",
+      "session-7182e6ba-0b26-43a8-bb8e-8b06a39b195a",
+      "session-83ea5234-3a07-4348-9ac5-76f989e9cb65",
+      "session-d3fa3d5b-73d2-4ff4-9f89-a3297d17e94a",
+      "session-33e3b9c6-fcee-43f4-9807-439e4f6d8284",
+      "session-be6e8832-a8a2-42ef-826e-c94e2f1df522",
+      "session-75278d1d-f625-4307-b7ed-addf7a293fef",
+      "session-134338e0-aa7a-48e5-92c9-e9c251ea5257",
+      "session-890cc2ab-240b-4843-9ba9-7ef18e566bc3",
+      "session-f6700feb-ca30-46fb-b65e-3ee240f36ae8",
+      "session-8ee405cd-2989-4f7c-82db-933e87ff1bc0",
+      "session-d4aa2ed7-0ccd-4f98-8369-182f2f0a5521",
+      "session-5e62ff74-5da2-48d0-b496-2d084978d980",
+      "session-8611f23a-f9c0-49a9-9885-f2e4d6071c13",
+      "session-15376b3a-ac67-4cf5-a6f1-b50cb855c0ef",
+      "session-40a673b0-55d1-45ed-9137-e0d03354e737",
+      "session-e8fd275f-47d1-48e9-85b6-d60c0a6cb00f",
+      "session-bfd5ba31-76e8-4d19-946b-70eb71b789c0",
+      "session-954acbb0-9c75-435c-a787-cf20dcbc4dce",
+      "session-48ed0378-0234-4441-85da-33e449203fc0",
+      "session-c8d0720b-bceb-47ec-9b38-d778c8afbe40",
+      "session-4510df9a-a6ac-4ffb-959b-9885bf41ef01",
+      "session-9b64f67b-d019-46e1-a847-c0dd39caa211",
+      "session-7780a07c-0ca8-44e9-9f77-48f4fccd20f7",
+      "session-960a1ae8-5386-4d78-814e-ddfaa5f37a40",
+      "session-9e02b5b0-1d43-4c45-803a-040e319028da",
+      "session-b74d27d3-1117-4bce-9197-a579cabfb5e3",
+      "session-1419e082-9d13-4dd5-bb61-c4b6eebd41ba",
+      "session-a554172f-ee12-424d-84c0-2d1249cb53db",
+      "session-559b0d0e-e229-4740-ba50-85e402e0edf0",
+      "session-ea008fc9-8faa-4fa3-9587-d01993415058",
+      "session-0c5d531f-0663-4272-83c3-a61e50fba85f",
+      "session-fa0007d5-09b0-4909-a186-bae8b4d97c69",
+      "session-a150c8ee-6c48-47d3-bfe7-bc36626e1445",
+      "session-cd3f30b0-fe4c-4d0f-80a1-8623d27c0394",
+      "session-d7a16fad-fed6-450e-ab59-4cadf2d1c7bc",
+      "session-db8148fa-34f5-4d41-92d8-a9be0d0da4e0",
+      "session-dfd24a1e-5f91-47aa-b8f6-c6c055086749",
+      "session-a67f808f-ed15-490e-9cc3-cb6c56b4d858",
+      "session-54bf8e59-bd4b-4d00-917c-2b0b079f8ed8",
+      "session-57454753-080c-445b-9956-52feb66754bb",
+      "session-49127067-69cf-4340-a85c-ab1caf90f8a2",
+      "session-e3169c9e-c45c-4b14-811c-f036b2bedd2c",
+      "session-82cdcbd0-7b2f-460b-8803-a0040d227cf8",
+      "session-52718523-d89c-46d5-9de8-326d711f9b52",
+      "session-118e3a35-7c94-462a-989d-6ae479b22a85",
+      "session-5ced838e-3170-46ba-8597-64ef5f9e8151",
+      "session-b6db963f-baf6-4733-9835-11e69ebed184",
+      "session-0f006989-f8ed-4a47-acda-ba51ad593ade",
+      "session-b6a44ace-5cd8-439c-bfff-a496d2430cdb",
+      "session-f4ed6df8-cecd-4ac7-b750-9ab258651696",
+      "session-5ce419b5-67b4-4264-be30-1f22772b2fbf",
+      "session-2a28a213-eff7-4887-88b2-9dbb1dee0238",
+      "session-3e4606de-c4dc-45d6-97f8-6529e9fb404c",
+      "session-381ee73f-1203-4beb-8a0f-9f844465ebf6",
+      "session-832ce42a-c762-49bf-95e4-9116eba32197",
+      "session-0fe8ae34-7015-4757-ade0-20795b1a78f4",
+      "session-3bd0d6ce-5a69-4cc6-8190-e3d51f938ce4",
+      "session-df4a2737-611f-4c9f-b488-36144501fa20",
+      "session-111b951f-d5d3-4d32-a529-73a27441566c",
+      "session-e93bf652-99a0-4f4c-af9f-b7b7502f3a89",
+      "session-00c0302d-a517-4cb1-9fec-6894a85ecc08",
+      "session-abe80843-91cb-48dc-99db-094506fb3993",
+      "session-390082e6-f20e-4cd4-86ba-32e0b41b5e32",
+      "session-6e00fedc-6f54-467d-8e3d-cd9144927c70",
+      "session-9e1ac24c-a543-4c74-9e53-b9f8d6100755",
+      "session-d1d670fa-ccbe-4891-9cd0-89b4df8fe708",
+      "session-bd06567d-9318-464b-897b-8fa45acdbdfd",
+      "session-1eb7bfd1-8792-40a1-9a6b-e83b5a138e55",
+      "session-73b291dd-ca93-481c-87ad-7d2e7309e569",
+      "session-93e833b1-5975-4cd0-9331-742579ead0ce",
+      "session-3f472afe-ce76-4879-a50c-9e1e2b12daa9",
+      "session-5e56d5a0-d80d-4c05-9859-e57b563cb712",
+      "session-aa780103-e304-4494-ba98-e84816c2566b",
+      "session-ac52f5ff-22c1-4b7c-bbd5-05a5cdb53e6b",
+      "session-63fad4e7-acbb-45a5-bcf1-a97052bded1e",
+      "session-bdc9111c-b9ec-4b5d-99f0-5bc6ce26f37e",
+      "session-f029801d-e80e-48ea-8fb4-f9d596117fd8",
+      "session-026938bd-6424-4a11-b75f-c2d69da5dc0f",
+      "session-67a7548e-5bf7-4217-87a3-e3aca8077877",
+      "session-a435d373-9310-4be2-9819-77a5040576fb",
+      "session-310130ee-1a61-4053-a790-7fdc8e455417",
+      "session-4b646647-d40b-4a64-8324-cd735c7bf46a",
+      "session-00781f1d-2891-405b-8a9f-cc32ec36b346",
+      "session-1718150e-e42b-480b-8d60-05b0d4f7053d",
+      "session-d09f84b5-6182-4742-baaf-67d69a3f1b64",
+      "session-e07c5252-c657-46db-a19e-62daeeb1bd18",
+      "session-cbe6e1d4-4f3a-464d-b130-2b6e4efb12b3",
+      "session-a8f023e4-3467-4d7c-8b59-13cc0d54f397",
+      "session-cde818e0-dcd0-4bde-b0c9-2a41bc0212b5",
+      "session-91d13c23-f608-4ba7-90c9-e65a60530c75",
+      "session-30de9c03-f015-41e3-a5e8-e15f4531bc58",
+      "session-e2604ea9-0dbd-40d9-b517-e64e7d404100",
+      "session-ee68c487-5a82-4202-aeda-02878d303eb9",
+      "session-f7b9f9e5-f613-44f6-a07c-18146fc8ff1c",
+      "session-a030adf1-5723-406a-8394-4d5671c57e35",
+      "session-06b4e5a6-6891-4988-b5a1-e474db507881",
+      "session-8dd9ed78-7941-40c9-b169-8a3715eb86e4",
+      "session-07cd48f2-a29c-4ad0-88aa-1affdfcb3431",
+      "session-c2808544-a139-4a7d-bca5-f96baa15db99",
+      "session-d38a6794-3930-436a-9b0c-6cc326798412",
+      "session-bde75b1d-149f-4636-b60e-02ebfdc36f1b",
+      "session-100a76be-2eff-476e-9342-404fd28b10ed",
+      "session-996d06e3-0669-41dd-82bf-cf9ce358b884",
+      "session-d830c0ee-3b3e-4e12-838d-d9ca5ca38a4a",
+      "session-0c0e7e47-21be-493d-a984-01fac15d68cc",
+      "session-22ad5067-910e-4e9d-9109-27a1eba851eb",
+      "session-60e0ce26-05ae-4e0d-8b9c-371ffd6bb395",
+      "session-96a4bf99-3347-4b74-8425-d31fc6a073d1",
+      "session-f7069614-459f-4f73-96e5-2346ebc6b1a8",
+      "session-e508d9dd-b9e1-4ea9-8b19-6ac4a39bc3b7",
+      "session-2f79e370-73b1-46c0-a9a9-9c6fd617cf52",
+      "session-4767a48b-4623-49c5-818d-b17f38790279",
+      "session-80dde722-619e-49d4-b5e0-f6e8f9ed1b51",
+      "session-6a1c46cb-3fbe-49cc-9f00-b070a4aa2409",
+      "session-9ee515c3-3faf-4fd7-8f7c-97c300034f12",
+      "session-aa2737d1-a85f-465c-97c5-645b1c343de7",
+      "session-f64a508d-7fde-4c50-9245-02be2ddc016a",
+      "session-e624a16e-73c8-41c6-97f7-c0e88bb7ce4e",
+      "session-4c654b83-2da9-448b-bb5f-87f33e8ef1ea",
+      "session-618f976b-634e-4200-b2de-f3c467a29bde",
+      "session-30d983f2-9983-4a20-9ed2-dee06ebd78be",
+      "session-13b40029-55dd-419e-b671-1c1257ddc5c7",
+      "session-2eb584db-01b4-4119-b965-1b0e7db3fda6",
+      "session-4de5b1be-78c4-41e4-9571-dd2b8f2f3630",
+      "session-52e540ca-0e72-4fb8-abb7-4dd6b89302a5",
+      "session-4dc58521-c354-4a85-98ca-d45438828675",
+      "session-50713fc9-17e5-47ee-bd77-829a6c45d69b",
+      "session-eeb1cceb-2b7c-406e-8879-90971bcc8f02",
+      "session-e1ef22da-13be-438e-af1d-e6757ab69740",
+      "session-dbe9bc4f-6539-486d-b42a-1e1be5aab8ae",
+      "session-f3653a47-36e4-4a7e-a190-5159677449b9",
+      "session-8660b235-4d1d-442d-a9e2-59ef060f755b",
+      "session-6a9f739f-3b84-4f0e-b18a-a6abe8ca92a2",
+      "session-373408f3-108f-4f03-affa-99287ba55b55",
+      "session-45821dca-fbc5-4473-987b-e85c26551579",
+      "session-bc95dd24-c655-4867-b0fe-c62472b2df7e",
+      "session-deee6b03-6590-417f-b19e-0e464ebce2bd",
+      "session-ee47c744-79bf-4f23-bd8f-b46fa4dfd8d1",
+      "session-0eeaf0c9-a608-4a1d-b108-8ecc2a8c8a84",
+      "session-59c552be-0c1d-4825-bdaf-8a77bc318a9d",
+      "session-a8a48d19-6f3a-47a5-93d4-1cc5d78d7be5",
+      "session-f920d303-911f-4f89-b429-03371738f54a",
+      "session-6aca42a1-777f-4177-9b61-f58ce99c6699",
+      "session-c7f2b830-0695-49ef-ab37-38795cf0c84f",
+      "session-4185bd5a-df52-4be1-a618-bed8bbfbb028",
+      "session-41072353-6e75-4005-bacc-663cd9cc72fd",
+      "session-6bcdd114-2fbc-4057-8a97-c3097211a14a",
+      "session-9e00d9eb-ee02-4966-808a-b3523fb53676",
+      "session-b16c01ab-0148-4f73-97e5-05efa6566991",
+      "session-ea3e77d1-ac31-4dfc-9cac-0ff3f494d490",
+      "session-0bbb2df8-f993-4a15-8e72-6f1ac7656074",
+      "session-d2b27c9c-0c73-4e55-85ea-05fc1d2ceae2",
+      "session-b797a13b-2cce-478f-9b52-11e87f840c3f",
+      "session-792532d9-b234-4a60-8b04-153ae52141f9",
+      "session-3268ffdb-3168-42f4-ba18-81db6ed63b91",
+      "session-e106acfd-74dc-41fa-920b-57dd09741e2f",
+      "session-30945106-ea26-41d0-8e40-3511180e43f2",
+      "session-b6c5daee-09f2-400a-92c0-be3816c134e8",
+      "session-207657d9-d842-4b6d-8d30-6ef2ca47455a",
+      "session-d0c55ec9-052d-40e1-9ce4-e751fb9400e7",
+      "session-588e9acb-f43e-4e6d-951d-59a6cda7a362",
+      "session-025b95ee-564c-438b-b0ac-a6e0472ecc61",
+      "session-20b17a6d-2c4a-4835-8efc-f0d360c5139a",
+      "session-ab32fcd3-6cc3-46ab-bcc2-b40be914c0d3",
+      "session-9ca0f8af-8cf4-4657-89fc-68a40b5e9978",
+      "session-b9d8d6cb-e394-4bbf-838e-bc1aebb2e2a0",
+      "session-1e978a97-547d-4384-9e28-7b28b1e29f11",
+      "session-3029040d-2aaf-47cc-924c-d9b13ffab7e6",
+      "session-34697bd7-9ed9-4227-bffa-be0f6b4d22cc",
+      "session-1157c30e-f2c4-4302-95e2-3953fb850fc0",
+      "session-b375689d-0acc-4f0f-a937-100c3ba23e48",
+      "session-bc2f8070-552f-4c3d-bdab-5c9774be42a9",
+      "session-affc34c1-f46a-410a-9b49-bdd54185a091",
+      "session-2f385eae-941d-4d26-8906-d09dcda4ea29",
+      "session-c57cb37d-ac5f-43f5-8618-98234f032def",
+      "session-81a06764-80e3-426c-981b-20116085f3a1",
+      "session-e230575e-ce61-46bb-8ef9-e4e6b65ed0d1",
+      "session-d27440b6-3990-4bdd-97ae-c76cce17aeb4",
+      "session-827ab4ed-3de1-4db6-b5b7-c306aaf03dbf",
+      "session-203eb994-f774-48fa-9f4f-e30b056546d7",
+      "session-5de9765e-7008-4ade-94af-07a455af747c",
+      "session-54bba451-f197-420d-ac6a-c26bae222ca8",
+      "session-38abceb7-0771-4cd3-8f49-0c77aae04838",
+      "session-86dbf596-5b9a-4078-a521-dced1d3edc4d",
+      "session-f12759cd-f4cc-496c-80d4-2251b13d152d",
+      "session-50ac3e53-a185-4392-8128-5d152a4164b9",
+      "session-e5a89fe2-c046-4f25-838d-409dff2dcf89",
+      "session-8fb0cfa0-e737-4932-b575-26117f1eaf30",
+      "session-4afba6aa-f7d0-4402-ba67-69f66fe19157",
+      "session-448d9b0e-95b8-4ac4-8bfd-8a23811a89c0",
+      "session-d46407ca-fc5b-4f89-a1ab-6655e12a2b69",
+      "session-7c2cca57-e9b7-496f-bca4-763338972c85",
+      "session-0bf74965-99bd-4bb9-add7-fe1cad24b014",
+      "session-6c1a72b6-f762-4a99-8883-96319a2a4be0",
+      "session-ac4e843c-541c-4330-a1e4-82735eb068b3",
+      "session-2165efd4-1b06-46c1-9b34-e42272b37365",
+      "session-80db96a5-ad67-4bf6-af20-02e861cd2826",
+      "session-f5c2951e-a449-4186-9952-12de80fa508d"
+    ],
+    "pinned": [],
+    "storeVersion": 2
+  },
+  "projectionCache": {
+    "cacheVersion": 3,
+    "rowCount": 125,
+    "distinctCwds": 9,
+    "withContextPressure": 125,
+    "withTitle": 116,
+    "withLastPromptAt": 116,
+    "sample": [
+      {
+        "sessionId": "session-3da76d78-fc46-4894-9adc-f1336bd791dd",
+        "cwd": "/Users/lzx/Documents/code/py",
+        "createdAt": 1786639592076,
+        "hasTitle": true,
+        "turns": 5,
+        "lastPromptAt": 1786639813461,
+        "blank": false,
+        "contextPressure": {
+          "pressureTokens": 24474,
+          "contextWindow": 1000000
+        },
+        "inputTokens": 33993,
+        "outputTokens": 2719,
+        "rowNames": [
+          "sessionStats",
+          "title",
+          "goal",
+          "tokenUsage",
+          "contextPressure",
+          "contextBreakdown",
+          "subagentTiming",
+          "subagent",
+          "permissions",
+          "sessionListMetadata",
+          "imageLimits",
+          "todos",
+          "plan"
+        ]
+      },
+      {
+        "sessionId": "session-4d237f88-ec3c-419f-9b4a-2d39877fd56c",
+        "cwd": "/Users/lzx/Documents/code/py",
+        "createdAt": 1786639832044,
+        "hasTitle": true,
+        "turns": 1,
+        "lastPromptAt": 1786894818334,
+        "blank": false,
+        "contextPressure": {
+          "pressureTokens": 41957,
+          "contextWindow": 1000000
+        },
+        "inputTokens": 37131,
+        "outputTokens": 8111,
+        "rowNames": [
+          "sessionStats",
+          "title",
+          "goal",
+          "tokenUsage",
+          "contextPressure",
+          "contextBreakdown",
+          "subagentTiming",
+          "subagent",
+          "permissions",
+          "sessionListMetadata",
+          "imageLimits",
+          "todos",
+          "plan"
+        ]
+      },
+      {
+        "sessionId": "session-6f838dec-5148-4070-87f5-43b3385ad85f",
+        "cwd": "/Users/lzx/Documents/sunteng/miraclip_ai",
+        "createdAt": 1786639900095,
+        "hasTitle": true,
+        "turns": 4,
+        "lastPromptAt": 1786640405965,
+        "blank": false,
+        "contextPressure": {
+          "pressureTokens": 28834,
+          "contextWindow": 1000000
+        },
+        "inputTokens": 21708,
+        "outputTokens": 10992,
+        "rowNames": [
+          "sessionStats",
+          "title",
+          "goal",
+          "tokenUsage",
+          "contextPressure",
+          "contextBreakdown",
+          "subagentTiming",
+          "subagent",
+          "permissions",
+          "sessionListMetadata",
+          "imageLimits",
+          "todos",
+          "plan"
+        ]
+      }
+    ]
+  },
+  "sessionDirs": {
+    "parentDirs": [
+      {
+        "parent": "--Users-lzx-.dsh--",
+        "sessionDirs": 33
+      },
+      {
+        "parent": "--Users-lzx-.dsh-im--",
+        "sessionDirs": 1
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-118.145.200.11-root-22-root--",
+        "sessionDirs": 1
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.31.223-raisehuang-22-Desktop--",
+        "sessionDirs": 1
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.98.152-sunteng-22-mira-ai--",
+        "sessionDirs": 3
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.98.152-sunteng-22-mira-live--",
+        "sessionDirs": 1
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.98.221-miraclips-22-RemoteTTS--",
+        "sessionDirs": 6
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.98.221-miraclips-22-dsh-setup--",
+        "sessionDirs": 7
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.98.76-sunteng-22-ollama_test--",
+        "sessionDirs": 3
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.99.179-sunteng-22-OmniJev--",
+        "sessionDirs": 2
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-192.168.99.179-sunteng-22-sunteng--",
+        "sessionDirs": 0
+      },
+      {
+        "parent": "--Users-lzx-.dsh-remote-workspaces-ai.miraclips.com-mira-22-miraclips--",
+        "sessionDirs": 4
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-Evoke--",
+        "sessionDirs": 18
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-HtDot--",
+        "sessionDirs": 54
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-LiveShopping--",
+        "sessionDirs": 20
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-capability-settings--",
+        "sessionDirs": 160
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-commander--",
+        "sessionDirs": 20
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-htdot-bridge--",
+        "sessionDirs": 32
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-quick-action--",
+        "sessionDirs": 10
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-shell-cmd--",
+        "sessionDirs": 23
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-task-gantt--",
+        "sessionDirs": 32
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-team-group--",
+        "sessionDirs": 25
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-terminal-panel--",
+        "sessionDirs": 15
+      },
+      {
+        "parent": "--Users-lzx-Documents-GitHub-dsh-trace-inspect--",
+        "sessionDirs": 58
+      },
+      {
+        "parent": "--Users-lzx-Documents-Raise--",
+        "sessionDirs": 8
+      },
+      {
+        "parent": "--Users-lzx-Documents-agent-workspace--",
+        "sessionDirs": 88
+      },
+      {
+        "parent": "--Users-lzx-Documents-agent-workspace-test-plugin--",
+        "sessionDirs": 4
+      },
+      {
+        "parent": "--Users-lzx-Documents-agent-workspace-test-worktree--",
+        "sessionDirs": 2
+      },
+      {
+        "parent": "--Users-lzx-Documents-code-py--",
+        "sessionDirs": 0
+      },
+      {
+        "parent": "--Users-lzx-Documents-research--",
+        "sessionDirs": 212
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-Htdot-OrderCenter--",
+        "sessionDirs": 12
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-htdot-cloud--",
+        "sessionDirs": 3
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-htdot-order-demand-skill--",
+        "sessionDirs": 44
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-htdot-order-demand-skill-test--",
+        "sessionDirs": 9
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-htdot-project--",
+        "sessionDirs": 21
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-miraclip_ai--",
+        "sessionDirs": 14
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-miraclip_ai-refs--",
+        "sessionDirs": 0
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-miraclip_ai-scripts--",
+        "sessionDirs": 0
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-miraclip_ai-src--",
+        "sessionDirs": 0
+      },
+      {
+        "parent": "--Users-lzx-Documents-sunteng-miraclips-project--",
+        "sessionDirs": 11
+      },
+      {
+        "parent": "--Users-lzx-Library-Application~0020Support-com.htdot.desktop-development-agent-tasks-project-workspaces-49ecf254-a408-4a5b-a340-472ce238a0e4--",
+        "sessionDirs": 1
+      },
+      {
+        "parent": "--Users-lzx-Library-Application~0020Support-com.htdot.desktop.development-development-agent-tasks-project-workspaces-61a40028-5656-400d-ab19-358677ceddc7--",
+        "sessionDirs": 1
+      },
+      {
+        "parent": "--tmp-dsh-empty-probe--",
+        "sessionDirs": 14
+      },
+      {
+        "parent": "--var-folders-5g-txcfh1s10c946gk79520g0_h0000gn-T--",
+        "sessionDirs": 3
+      }
+    ],
+    "sessionCount": 976,
+    "parsed": 974,
+    "failed": 0,
+    "generations": [
+      "session.v4.jsonl.zstd",
+      null
+    ],
+    "withUserMessages": 893,
+    "withParentSession": 401,
+    "origins": {
+      "subagent": 396,
+      "unknown": 580
+    },
+    "cwdCounts": {
+      "/Users/lzx/.dsh": 31,
+      "unknown": 2,
+      "/Users/lzx/.dsh/im": 1,
+      "/Users/lzx/.dsh/remote-workspaces/118.145.200.11-root-22/root": 1,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.31.223-raisehuang-22/Desktop": 1,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.98.152-sunteng-22/mira-ai": 3,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.98.152-sunteng-22/mira-live": 1,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.98.221-miraclips-22/RemoteTTS": 6,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.98.221-miraclips-22/dsh-setup": 7,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.98.76-sunteng-22/ollama_test": 3,
+      "/Users/lzx/.dsh/remote-workspaces/192.168.99.179-sunteng-22/OmniJev": 2,
+      "/Users/lzx/.dsh/remote-workspaces/ai.miraclips.com-mira-22/miraclips": 4,
+      "/Users/lzx/Documents/GitHub/Evoke": 18,
+      "/Users/lzx/Documents/GitHub/HtDot": 54,
+      "/Users/lzx/Documents/GitHub/LiveShopping": 20,
+      "/Users/lzx/Documents/GitHub/dsh-capability-settings": 160,
+      "/Users/lzx/Documents/GitHub/dsh-commander": 20,
+      "/Users/lzx/Documents/GitHub/dsh-htdot-bridge": 32,
+      "/Users/lzx/Documents/GitHub/dsh-quick-action": 10,
+      "/Users/lzx/Documents/GitHub/dsh-shell-cmd": 23,
+      "/Users/lzx/Documents/GitHub/dsh-task-gantt": 32,
+      "/Users/lzx/Documents/GitHub/dsh-team-group": 25,
+      "/Users/lzx/Documents/GitHub/dsh-terminal-panel": 15,
+      "/Users/lzx/Documents/GitHub/dsh-trace-inspect": 58,
+      "/Users/lzx/Documents/Raise": 8,
+      "/Users/lzx/Documents/agent-workspace": 88,
+      "/Users/lzx/Documents/agent-workspace/test-plugin": 4,
+      "/Users/lzx/Documents/agent-workspace/test-worktree": 2,
+      "/Users/lzx/Documents/research": 212,
+      "/Users/lzx/Documents/sunteng/Htdot-OrderCenter": 12,
+      "/Users/lzx/Documents/sunteng/htdot-cloud": 3,
+      "/Users/lzx/Documents/sunteng/htdot-order-demand-skill": 44,
+      "/Users/lzx/Documents/sunteng/htdot-order-demand-skill/test": 9,
+      "/Users/lzx/Documents/sunteng/htdot-project": 21,
+      "/Users/lzx/Documents/sunteng/miraclip_ai": 14,
+      "/Users/lzx/Documents/sunteng/miraclips-project": 11,
+      "/Users/lzx/Library/Application Support/com.htdot.desktop/development/agent-tasks/project-workspaces/49ecf254-a408-4a5b-a340-472ce238a0e4": 1,
+      "/Users/lzx/Library/Application Support/com.htdot.desktop.development/development/agent-tasks/project-workspaces/61a40028-5656-400d-ab19-358677ceddc7": 1,
+      "/tmp/dsh-empty-probe": 14,
+      "/var/folders/5g/txcfh1s10c946gk79520g0_h0000gn/T": 3
+    },
+    "sample": [
+      {
+        "parent": "--Users-lzx-.dsh--",
+        "sessionDir": "0ad76f8d-4748-4df3-a466-783be7881ced",
+        "files": [
+          "session.lock",
+          "session.v4.jsonl.zstd"
+        ],
+        "newest": "session.v4.jsonl.zstd",
+        "bytes": 42101,
+        "parsed": true,
+        "events": 17,
+        "header": {
+          "version": 4,
+          "id": "0ad76f8d-4748-4df3-a466-783be7881ced",
+          "createdAt": 1790606263519,
+          "cwd": "/Users/lzx/.dsh",
+          "origin": "subagent",
+          "agentPreset": "standard",
+          "hasParentSession": true
+        },
+        "userMessages": 2,
+        "assistantMessages": 1,
+        "turns": 1,
+        "hasTitleEvent": true,
+        "eventTypes": {
+          "session": 1,
+          "sandbox/mode": 1,
+          "approval/policy": 1,
+          "agent/inbox/spliced": 2,
+          "turn/start": 1,
+          "subagent/descriptor": 1,
+          "step/start": 1,
+          "system/message": 1,
+          "user/message": 2,
+          "request/header": 1,
+          "request/context": 1,
+          "session/title": 1,
+          "assistant/message": 1,
+          "step/end": 1,
+          "turn/end": 1
+        }
+      },
+      {
+        "parent": "--Users-lzx-.dsh--",
+        "sessionDir": "26b48b74-8d04-4fa2-916d-9e9a44c3dda1",
+        "files": [
+          "session.lock",
+          "session.v4.jsonl.zstd"
+        ],
+        "newest": "session.v4.jsonl.zstd",
+        "bytes": 178994,
+        "parsed": true,
+        "events": 113,
+        "header": {
+          "version": 4,
+          "id": "26b48b74-8d04-4fa2-916d-9e9a44c3dda1",
+          "createdAt": 1791349058487,
+          "cwd": "/Users/lzx/.dsh",
+          "origin": "subagent",
+          "agentPreset": "standard",
+          "hasParentSession": true
+        },
+        "userMessages": 4,
+        "assistantMessages": 15,
+        "turns": 1,
+        "hasTitleEvent": true,
+        "eventTypes": {
+          "session": 1,
+          "subagent/descriptor": 1,
+          "sandbox/mode": 1,
+          "approval/policy": 1,
+          "agent/inbox/spliced": 2,
+          "turn/start": 1,
+          "step/start": 15,
+          "system/message": 1,
+          "user/message": 4,
+          "request/header": 1,
+          "request/context": 1,
+          "session/title": 1,
+          "assistant/message": 15,
+          "tool/call": 26,
+          "tool/result": 26,
+          "step/end": 15,
+          "turn/end": 1
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+# scout 探针覆盖层（web profile 变体）：同时插入能力面板宿主插件与观察插件。
+# 用于验证「最小 web profile 隔离启动 + capabilityPanel 可用 + RPC 通道挂载」。
+- insert:
+    - id: capability-panel
+      name: 'dsh-capability-settings'
+      config:
+        # 把 agentsHome 指到探针目录：避免枚举 live ~/.agents/skills（只读但不干净）
+        agentsHome: /tmp/dsh-commander-probe/agents
+    - id: scout-probe
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/docs/research/probes/probe-plugin.mjs'
+      config:
+        out: /tmp/dsh-commander-probe/evidence/plugin-boot-web.json
+        deadlineMs: 15000

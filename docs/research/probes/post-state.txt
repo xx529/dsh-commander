@@ -1,0 +1,16 @@
+# post-probe live-state snapshot 2026-11-17T16:29:59+08:00
+## git status
+?? docs/architecture/
+?? docs/research/
+## git rev
+d8d1543
+## profiles/desktop tree hash (paths+size+mtime)
+5d9f17172dc5dc06f2eb7048816772f260bef8f91fd4c0fc29a434ee7c318d9a  -
+## profiles/desktop top-level mtimes
+4b17296c1f4514592fc948b4e1d8ff671dbe74b9dbdac192c0a35e0ab07c130a  -
+## dsh home dotenv stat (no content)
+/Users/lzx/.dsh/.env|858|1791515016
+## desktop profile node_modules top-level count
+     380
+## leftover probe processes
+0

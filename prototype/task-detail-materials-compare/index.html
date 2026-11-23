@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设计对比 · 材料归属 A/B</title>
+<meta name="description" content="同一份多轮任务报告，对比报告级材料与逐项验收材料两种信息架构。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <span class="kicker">设计对比 · 材料归属</span>
+    <h1>同一份整理报告，两种材料归属</h1>
+    <p>同样的结论、同样的 7 份材料，只改变「材料挂在哪」。两图都从同一份报告的「整理报告」开始，裁到验收结束。</p>
+  </header>
+
+  <section class="cols" aria-label="两个方案并排">
+    <article class="col">
+      <header class="col-head">
+        <span class="tag">方案 A</span>
+        <h2>报告级材料</h2>
+        <p>结论下统一材料区，验收项只挂 1–2 个 chips。</p>
+      </header>
+      <figure class="frame">
+        <img src="../task-detail-materials/shots/panel-report-section.png" alt="方案 A：报告级材料">
+        <figcaption>
+          <span><i class="dot a"></i>结论 + 2 列缩略图 + 链接/文档列表</span>
+          <span><i class="dot a"></i>验收项只放 chips，不重复材料</span>
+        </figcaption>
+      </figure>
+      <ul class="notes">
+        <li><b>强</b>：结论一眼有图有来源，适合先审结论。</li>
+        <li><b>弱</b>：chips 只能放 1–2 个，逐条验收时要回上面找。</li>
+      </ul>
+    </article>
+
+    <article class="col">
+      <header class="col-head">
+        <span class="tag alt">方案 B</span>
+        <h2>逐项材料</h2>
+        <p>每条验收项自带可折叠的材料表，材料跟着验收走。</p>
+      </header>
+      <figure class="frame">
+        <img src="../task-detail-materials-per-item/shots/panel-report-section.png" alt="方案 B：每条验收项独立材料表">
+        <figcaption>
+          <span><i class="dot b"></i>结论只留「2 条验收 · 7 份材料」</span>
+          <span><i class="dot b"></i>每条验收项：材料 4 / 材料 3</span>
+        </figcaption>
+      </figure>
+      <ul class="notes">
+        <li><b>强</b>：验收项与材料一一对应，逐条验收最直接。</li>
+        <li><b>弱</b>：同材料跨项要重复；无归属来源没有位置。</li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="table-wrap" aria-label="取舍对比">
+    <h2>怎么选</h2>
+    <table>
+      <thead>
+        <tr><th>维度</th><th><span class="tag">A</span> 报告级</th><th><span class="tag alt">B</span> 逐项</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>结论支撑</td><td>强：结论下直接看到 2 张图和来源</td><td>弱：结论只留计数，要往下滚</td></tr>
+        <tr><td>验收映射</td><td>弱：chips 只能覆盖 1–2 个</td><td>强：每条验收项自带完整材料表</td></tr>
+        <tr><td>图片可读性</td><td>强：2 列大缩略图，适合扫读</td><td>弱：行内 52×34 缩略图，只能当索引</td></tr>
+        <tr><td>跨项复用</td><td>无重复，一份材料只出现一次</td><td>同一材料在多个验收项下重复出现</td></tr>
+        <tr><td>无归属来源</td><td>有位置：报告级「补充来源」</td><td>没有自然位置，容易丢</td></tr>
+        <tr><td>页面高度</td><td>集中，较紧凑</td><td>随「验收项 × 材料」线性变长</td></tr>
+        <tr><td>数据模型</td><td>扁平 <code>reportMaterials[]</code></td><td>需要 <code>acceptanceIds</code> 或按项分组</td></tr>
+        <tr><td>最适合</td><td>结论审阅、多来源、材料跨项</td><td>逐条验收、材料少且边界清晰</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="recommend" aria-label="推荐方案">
+    <div class="rec-copy">
+      <span class="kicker">建议 · 方案 C</span>
+      <h2>默认 A，逐项按需展开 B</h2>
+      <p>保留报告级材料总览，让结论先有图有来源；每条验收项的 chips 点击后，在原地展开「本项材料」行内表。存储只存一份 material，用 <code>acceptanceIds</code> 关联，避免重复副本。</p>
+      <ul>
+        <li><b>结论</b>：A 的总览，第一眼可复核；</li>
+        <li><b>验收</b>：B 的归属，点开哪条看哪条；</li>
+        <li><b>跨项</b>：同一 id 多处引用，不重复存、不丢补充来源。</li>
+      </ul>
+    </div>
+    <div class="mini" aria-hidden="true">
+      <div class="mini-title">方案 C · 信息架构</div>
+      <div class="mini-conclusion">
+        <span class="mini-kicker">结论</span>
+        <p>Htdot 当前依赖 GLM-4.6；法律版是独立 SKU…</p>
+        <div class="mini-sources"><span>2 图</span><span>3 链接</span><span>2 文档</span><b>查看依据</b></div>
+      </div>
+      <div class="mini-accept">
+        <div class="mini-accept-head"><span>验收 2 条</span><b>2/2 有证据</b></div>
+        <div class="mini-item"><span class="mini-check">✓</span><span>核对模型版本与 SKU 边界</span><i>本项材料 4</i></div>
+        <div class="mini-item is-open"><span class="mini-check">✓</span><span>给出升级建议与回滚条件</span><i>本项材料 3</i></div>
+        <div class="mini-mats"><span class="mini-thumb"></span><span class="mini-row"></span><span class="mini-row short"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>原型 A：<code>prototype/task-detail-materials/</code></span>
+    <span>原型 B：<code>prototype/task-detail-materials-per-item/</code></span>
+    <span>同一份 GLM 报告、同一组 mock 材料</span>
+  </footer>
+</main>
+</body>
+</html>

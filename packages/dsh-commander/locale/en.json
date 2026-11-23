@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Commander",
+    "description": "Run a commander conversation that dispatches tasks to workspaces and sessions, then reports agent replies back."
+  }
+}

@@ -1,0 +1,229 @@
+diff --git a/deploy/production/application-prod.properties b/deploy/production/application-prod.properties
+index fe387be..c0ad7fd 100644
+--- a/deploy/production/application-prod.properties
++++ b/deploy/production/application-prod.properties
+@@ -15,3 +15,5 @@ ordercenter.kingdee.browser.versions.account-label=${ORDERCENTER_BROWSER_ACCOUNT
+ ordercenter.browser.bom.identity.key=BOM_NUMBER_AND_BUSINESS_VERSION
+ ordercenter.browser.bom.identity.revision=${PROD_BOM_IDENTITY_REVISION}
+ ordercenter.integration.bom-mcp.enabled=false
++# Fixed-revision daily report export; set false to reject production_daily_export and hide the Excel button.
++ordercenter.report.export.enabled=true
+diff --git a/order-center-boot/src/main/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponse.java b/order-center-boot/src/main/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponse.java
+index 3b78ecc..e341671 100644
+--- a/order-center-boot/src/main/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponse.java
++++ b/order-center-boot/src/main/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponse.java
+@@ -19,6 +19,8 @@ record BusinessErrorResponse(int status,String code,String message) {
+    return new BusinessErrorResponse(422,failure.getMessage(),com.hgihtorque.ordercenter.integration.application.McpBusinessResult.stateMessage((IllegalStateException)failure));
+   if(failure instanceof IllegalStateException&&"REPORT_EXPORT_TOO_LARGE".equals(failure.getMessage()))
+    return new BusinessErrorResponse(422,"EXPORT_TOO_LARGE","报告超过当前下载大小限制，请联系管理员处理");
++  if(failure instanceof IllegalStateException&&"REPORT_EXPORT_DISABLED".equals(failure.getMessage()))
++   return new BusinessErrorResponse(422,"REPORT_EXPORT_DISABLED","日报导出功能已关闭，请联系管理员开启");
+   if(failure instanceof com.hgihtorque.ordercenter.workflow.application.PermanentEventException
+     &&java.util.Set.of("STALE_REVISION","VERSION_CONFLICT").contains(failure.getMessage()==null?"":failure.getMessage()))
+    return new BusinessErrorResponse(409,"REVISION_CONFLICT","订单修订已变化，请重新查询当前修订后处理");
+diff --git a/order-center-boot/src/test/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponseTest.java b/order-center-boot/src/test/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponseTest.java
+index ea6e359..5fadb24 100644
+--- a/order-center-boot/src/test/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponseTest.java
++++ b/order-center-boot/src/test/java/com/hgihtorque/ordercenter/boot/web/BusinessErrorResponseTest.java
+@@ -36,4 +36,9 @@ class BusinessErrorResponseTest {
+   assertEquals(403,BusinessErrorResponse.from(new SecurityException("private details")).status());
+   assertEquals(500,BusinessErrorResponse.from(new RuntimeException()).status());
+  }
++ @Test void disabledExportsAreActionable(){
++  var response=BusinessErrorResponse.from(new IllegalStateException("REPORT_EXPORT_DISABLED"));
++  assertEquals(422,response.status());assertEquals("REPORT_EXPORT_DISABLED",response.code());
++  assertEquals("日报导出功能已关闭，请联系管理员开启",response.message());
++ }
+ }
+diff --git a/order-center-modules/integration/application/src/main/java/com/hgihtorque/ordercenter/integration/application/McpBusinessResult.java b/order-center-modules/integration/application/src/main/java/com/hgihtorque/ordercenter/integration/application/McpBusinessResult.java
+index a2fe247..e65efa8 100644
+--- a/order-center-modules/integration/application/src/main/java/com/hgihtorque/ordercenter/integration/application/McpBusinessResult.java
++++ b/order-center-modules/integration/application/src/main/java/com/hgihtorque/ordercenter/integration/application/McpBusinessResult.java
+@@ -25,6 +25,7 @@ public final class McpBusinessResult {
+   case "WORKFLOW_RELEASE_AMBIGUOUS" -> "当前租户存在多个不同的启用流程版本，无法唯一确定订单流程";
+   case "RELEASE_DEMAND_TEMPLATE_MISSING" -> "当前渠道发布配置缺少需求模板，请联系管理员";
+   case "DAILY_REPORT_NOT_READY" -> "日报结果尚未生成，请稍后查询";
++  case "REPORT_EXPORT_DISABLED" -> "日报导出功能已关闭（REPORT_EXPORT_DISABLED），请联系管理员开启";
+   case "ORIGINALS_NOT_READY" -> "原始附件尚未准备完成";
+   case "ATTACHMENT_NOT_APPROVED" -> "附件尚未通过检查";
+   case "INVALID_SLOT_OR_STATE" -> "附件位置或当前业务状态不允许此操作";
+diff --git a/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/DailyExportTool.java b/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/DailyExportTool.java
+index 6a80215..12495e8 100644
+--- a/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/DailyExportTool.java
++++ b/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/DailyExportTool.java
+@@ -5,9 +5,10 @@ import com.fasterxml.jackson.databind.*;
+ import org.springframework.stereotype.Service;
+ @Service
+ public class DailyExportTool {
+- private final DailyReportExportService exports;private final ObjectMapper json=new ObjectMapper();
+- public DailyExportTool(DailyReportExportService exports){this.exports=exports;}
++ private final DailyReportExportService exports;private final ReportExportSwitch settings;private final ObjectMapper json=new ObjectMapper();
++ public DailyExportTool(DailyReportExportService exports,ReportExportSwitch settings){this.exports=exports;this.settings=settings;}
+  public String name(){return "production_daily_export";}
++ public boolean enabled(){return settings.enabled();}
+  public JsonNode inputSchema(){
+   var s=json.createObjectNode().put("type","object").put("additionalProperties",false);
+   var p=s.putObject("properties");
+@@ -20,6 +21,7 @@ public class DailyExportTool {
+  }
+  public JsonNode call(BusinessCaller caller,JsonNode args)throws Exception{
+   if(caller==null||!caller.scopes().contains("order:read"))throw new SecurityException("ORDER_READ_FORBIDDEN");
++  if(!settings.enabled())throw new IllegalStateException("REPORT_EXPORT_DISABLED");
+   if(args==null||!args.isObject()||!args.path("instanceId").isTextual()||!args.path("revisionId").isTextual())throw new IllegalArgumentException("INVALID_REPORT_EXPORT");
+   var keys=args.fieldNames();while(keys.hasNext())if(!java.util.Set.of("instanceId","revisionId","format").contains(keys.next()))throw new IllegalArgumentException("INVALID_REPORT_EXPORT");
+   if(args.has("format")&&!args.get("format").isTextual())throw new IllegalArgumentException("INVALID_REPORT_FORMAT");
+diff --git a/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/ReportExportSwitch.java b/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/ReportExportSwitch.java
+new file mode 100644
+index 0000000..11f7073
+--- /dev/null
++++ b/order-center-modules/reporting/interfaces/src/main/java/com/hgihtorque/ordercenter/reporting/interfaces/mcp/ReportExportSwitch.java
+@@ -0,0 +1,10 @@
++package com.hgihtorque.ordercenter.reporting.interfaces.mcp;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.stereotype.Component;
++/** Deployment switch for fixed-revision daily report export; defaults on so existing deployments are unchanged. */
++@Component
++public class ReportExportSwitch {
++ private final boolean enabled;
++ public ReportExportSwitch(@Value("${ordercenter.report.export.enabled:true}") boolean enabled){this.enabled=enabled;}
++ public boolean enabled(){return enabled;}
++}
+diff --git a/order-center-modules/workflow/interfaces/src/main/java/com/hgihtorque/ordercenter/workflow/interfaces/mcp/WorkflowToolRegistry.java b/order-center-modules/workflow/interfaces/src/main/java/com/hgihtorque/ordercenter/workflow/interfaces/mcp/WorkflowToolRegistry.java
+index 68f3b34..0c418e3 100644
+--- a/order-center-modules/workflow/interfaces/src/main/java/com/hgihtorque/ordercenter/workflow/interfaces/mcp/WorkflowToolRegistry.java
++++ b/order-center-modules/workflow/interfaces/src/main/java/com/hgihtorque/ordercenter/workflow/interfaces/mcp/WorkflowToolRegistry.java
+@@ -82,6 +82,8 @@ public class WorkflowToolRegistry {
+  public ArrayNode listApi(BusinessCaller caller){
+   var result=list(caller).deepCopy();
+   for(var tool:result)if(java.util.Set.of("order_submit","production_daily_begin").contains(tool.path("name").asText()))withInitiatorSchema(tool.path("inputSchema"));
++  // Browser capabilities drive the Excel button and its disabled reason; MCP keeps advertising the tool so callers receive REPORT_EXPORT_DISABLED instead of an opaque missing-tool error.
++  if(dailyExport!=null&&!dailyExport.enabled())for(var tool:result)if(dailyExport.name().equals(tool.path("name").asText()))((com.fasterxml.jackson.databind.node.ObjectNode)tool).put("enabled",false);
+   return result;
+  }
+  public ArrayNode list(BusinessCaller caller){
+diff --git a/order-center-tests/workflow/src/test/java/com/hgihtorque/ordercenter/workflow/DailyExportSwitchTest.java b/order-center-tests/workflow/src/test/java/com/hgihtorque/ordercenter/workflow/DailyExportSwitchTest.java
+new file mode 100644
+index 0000000..cae558c
+--- /dev/null
++++ b/order-center-tests/workflow/src/test/java/com/hgihtorque/ordercenter/workflow/DailyExportSwitchTest.java
+@@ -0,0 +1,73 @@
++package com.hgihtorque.ordercenter.workflow;
++import com.fasterxml.jackson.databind.JsonNode;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.hgihtorque.ordercenter.integration.application.McpBusinessResult;
++import com.hgihtorque.ordercenter.order.application.BusinessCaller;
++import com.hgihtorque.ordercenter.order.interfaces.mcp.*;
++import com.hgihtorque.ordercenter.reporting.application.DailyReportExportService;
++import com.hgihtorque.ordercenter.reporting.interfaces.mcp.DailyExportTool;
++import com.hgihtorque.ordercenter.reporting.interfaces.mcp.ReportExportSwitch;
++import com.hgihtorque.ordercenter.workflow.interfaces.mcp.WorkflowToolRegistry;
++import org.junit.jupiter.api.*;
++import org.springframework.boot.test.context.runner.ApplicationContextRunner;
++import java.util.*;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++@Tag("TEST")
++class DailyExportSwitchTest {
++ private final ObjectMapper json=new ObjectMapper();
++ private final BusinessCaller caller=new BusinessCaller("T","A",Set.of("order:read"));
++ private com.fasterxml.jackson.databind.node.ObjectNode args(String format){
++  var args=json.createObjectNode().put("instanceId","O").put("revisionId","R");
++  return format==null?args:args.put("format",format);
++ }
++ @Test void propertySwitchDefaultsOnAndHonorsExplicitFalse(){
++  new ApplicationContextRunner().withUserConfiguration(ReportExportSwitch.class)
++   .run(context->assertTrue(context.getBean(ReportExportSwitch.class).enabled()));
++  new ApplicationContextRunner().withUserConfiguration(ReportExportSwitch.class)
++   .withPropertyValues("ordercenter.report.export.enabled=false")
++   .run(context->assertFalse(context.getBean(ReportExportSwitch.class).enabled()));
++ }
++ @Test void enabledToolDelegatesToTheExistingExporter()throws Exception{
++  var exports=mock(DailyReportExportService.class);
++  var export=new DailyReportExportService.Export("daily-O-R.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","sha",3,"QQ==");
++  when(exports.export(caller,"O","R","xlsx")).thenReturn(export);
++  var result=new DailyExportTool(exports,new ReportExportSwitch(true)).call(caller,args("xlsx"));
++  assertEquals("daily-O-R.xlsx",result.path("filename").asText());
++  verify(exports).export(caller,"O","R","xlsx");
++ }
++ @Test void disabledToolRejectsWithStableCodeAndNeverCallsTheExporter(){
++  var exports=mock(DailyReportExportService.class);
++  var failure=assertThrows(IllegalStateException.class,()->new DailyExportTool(exports,new ReportExportSwitch(false)).call(caller,args("xlsx")));
++  assertEquals("REPORT_EXPORT_DISABLED",failure.getMessage());
++  verifyNoInteractions(exports);
++  assertEquals("日报导出功能已关闭（REPORT_EXPORT_DISABLED），请联系管理员开启",McpBusinessResult.stateMessage(failure));
++ }
++ @Test void scopeIsCheckedBeforeTheSwitch(){
++  var failure=assertThrows(SecurityException.class,()->new DailyExportTool(mock(DailyReportExportService.class),new ReportExportSwitch(false)).call(new BusinessCaller("T","A",Set.of()),args("xlsx")));
++  assertEquals("ORDER_READ_FORBIDDEN",failure.getMessage());
++ }
++ @Test void invalidArgumentsKeepTheirExistingCodesWhileEnabled()throws Exception{
++  var tool=new DailyExportTool(mock(DailyReportExportService.class),new ReportExportSwitch(true));
++  assertEquals("INVALID_REPORT_EXPORT",assertThrows(IllegalArgumentException.class,()->tool.call(caller,json.createObjectNode().put("instanceId","O"))).getMessage());
++  assertEquals("INVALID_REPORT_EXPORT",assertThrows(IllegalArgumentException.class,()->tool.call(caller,args("xlsx").put("tenant","other"))).getMessage());
++  assertEquals("INVALID_REPORT_FORMAT",assertThrows(IllegalArgumentException.class,()->tool.call(caller,args(null).put("format",1))).getMessage());
++ }
++ @Test void browserCapabilityCarriesDisabledFlagWhileMcpStillAdvertisesTheTool(){
++  var disabled=new DailyExportTool(mock(DailyReportExportService.class),new ReportExportSwitch(false));
++  var capability=find(registry(disabled).listApi(caller),"production_daily_export");
++  assertNotNull(capability);assertFalse(capability.path("enabled").asBoolean(true));
++  assertNotNull(find(registry(disabled).list(caller),"production_daily_export"));
++  var enabled=find(registry(new DailyExportTool(mock(DailyReportExportService.class),new ReportExportSwitch(true))).listApi(caller),"production_daily_export");
++  assertNotNull(enabled);assertTrue(enabled.path("enabled").isMissingNode());
++ }
++ private WorkflowToolRegistry registry(DailyExportTool export){
++  var registry=new WorkflowToolRegistry(mock(OrderStatusTool.class),mock(ApprovalPreviewTool.class),mock(DemandBeginTool.class),mock(DemandAttachmentTool.class),mock(DemandCompleteTool.class),mock(DailyBeginTool.class),mock(DailyReportTool.class),mock(DailyResubmitTool.class),mock(ProductionAggregateTool.class),mock(OriginalAttachmentReadTool.class));
++  registry.configureDailyExport(export);
++  return registry;
++ }
++ private JsonNode find(JsonNode tools,String name){
++  for(var tool:tools)if(name.equals(tool.path("name").asText()))return tool;
++  return null;
++ }
++}
+diff --git a/order-center-web/src/BusinessForm.tsx b/order-center-web/src/BusinessForm.tsx
+index fb63f3d..9ea6faf 100644
+--- a/order-center-web/src/BusinessForm.tsx
++++ b/order-center-web/src/BusinessForm.tsx
+@@ -7,7 +7,7 @@ import {resultLabel} from './resultLabels';
+ import {useState, useRef, useEffect, type FormEvent} from 'react';
+ import {request, type Session} from './api';
+ type Field={type:string;pattern?:string;format?:string;description?:string;enum?:string[];minimum?:number;maximum?:number;minLength?:number;maxLength?:number};
+-export type Capability={name:string;description:string;inputSchema:{properties:Record<string,Field>;required:string[]}};
++export type Capability={name:string;description:string;inputSchema:{properties:Record<string,Field>;required:string[]};enabled?:boolean};
+ export const titles:Record<string,string>={order_status_get:'查询订单进度',order_submit:'创建需求',order_upload_complete:'完成附件提交',order_attachment_upload:'上传原始附件',order_attachment_list:'查看附件清单',order_attachment_get:'读取原始附件',order_preview_get:'查看审批预览',production_daily_begin:'提交生产日报',production_daily_resubmit:'补充日报',production_daily_get:'查看日报',production_daily_aggregate_get:'查询生产汇总'};
+ Object.assign(titles,{forecast_plans_list:'预测计划',bom_calculation_list:'计算批次',order_notification_get:'通知状态',production_daily_export:'下载固定修订日报',order_demand_resubmit_availability:'检查需求补交条件',order_demand_resubmit:'补交需求原件',order_demand_lines_get:'查询解析需求行',order_demand_revision_get:'查询修订预测上下文',order_demand_revisions:'查询需求修订',business_request_get:'查询接收进度',order_timeline_get:'查看处理历史',forecast_documents_get:'查看预测单核验结果',production_daily_history:'查找历史日报',bom_calculation_get:'查看BOM计算结果'});
+ export function Result({value,field,daily=false}:{value:unknown;field?:string;daily?:boolean}){
+diff --git a/order-center-web/src/RecordWorkbench.tsx b/order-center-web/src/RecordWorkbench.tsx
+index 718b15a..cbad5a9 100644
+--- a/order-center-web/src/RecordWorkbench.tsx
++++ b/order-center-web/src/RecordWorkbench.tsx
+@@ -8,6 +8,7 @@ export function RecordWorkbench({session,capabilities,daily=false,initialId}:{se
+  const [id,setId]=useState(initialId||''),[operation,setOperation]=useState(daily?'production_daily_get':'order_status_get'),[context,setContext]=useState<Record<string,string>>({}),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const names=daily?['production_daily_get','order_timeline_get']:['order_status_get','order_demand_lines_get','order_attachment_list'];
+  const available=names.map(n=>capabilities.find(c=>c.name===n)).filter((c):c is Capability=>!!c),current=available.find(c=>c.name===operation)||available[0];
++ const exportCapability=capabilities.find(c=>c.name==='production_daily_export');
+  async function call(name:string,args:object):Promise<any>{return request('/operations/'+name,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(args)})}
+  useEffect(()=>{if(daily||!id)return;let active=true;setBusy(true);setError('');setContext({instanceId:id});
+  (async()=>{const status=await call('order_status_get',{instanceId:id});const rows:Record<string,string>[]=[];let cursor:string|undefined;const seen=new Set<string>();do{const p=await call(daily?'production_daily_history':'order_demand_revisions',{instanceId:id,limit:100,...(cursor?{cursor}:{})});rows.push(...(daily?p.revisionIds.map((revisionId:string)=>({revisionId})):p.items));cursor=p.nextCursor;if(cursor&&seen.has(cursor))throw Error('历史记录分页异常');if(cursor)seen.add(cursor);}while(cursor);if(active){setContext({instanceId:id,...rows.find(r=>r.revisionId===status.revisionId)});}})().catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setBusy(false)});return()=>{active=false};},[id,daily]);
+@@ -15,7 +16,7 @@ export function RecordWorkbench({session,capabilities,daily=false,initialId}:{se
+  if(daily&&!id)return <DailyWorkbench session={session} onOpen={(row)=>{setContext({instanceId:row.instanceId,revisionId:row.revisionId});setId(row.instanceId)}}/>;
+  if(!id)return <OrderWorkbench session={session} onOpen={setId}/>;
+  const missing=current?.inputSchema.required.some(k=>/Id$/.test(k)&&!context[k]);
+- return <><div className="detail-toolbar"><nav className="business-tab-list detail-tabs" aria-label="详情内容">{available.map(c=><button key={c.name} aria-pressed={current?.name===c.name} onClick={()=>setOperation(c.name)}>{titles[c.name]||c.name}</button>)}</nav>{daily&&capabilities.some(c=>c.name==='production_daily_export')&&<DailyExport key={id+context.revisionId} session={session} instanceId={id} revisionId={context.revisionId}/>}<button className="detail-back" onClick={()=>setId('')}>返回列表</button></div><h2>{daily?'生产日报详情':'订单详情'}</h2>{!daily&&<p>订单：{id}</p>}
++ return <><div className="detail-toolbar"><nav className="business-tab-list detail-tabs" aria-label="详情内容">{available.map(c=><button key={c.name} aria-pressed={current?.name===c.name} onClick={()=>setOperation(c.name)}>{titles[c.name]||c.name}</button>)}</nav>{daily&&exportCapability&&exportCapability.enabled!==false&&<DailyExport key={id+context.revisionId} session={session} instanceId={id} revisionId={context.revisionId}/>}{daily&&exportCapability&&exportCapability.enabled===false&&<span>日报导出功能已关闭，请联系管理员开启。</span>}<button className="detail-back" onClick={()=>setId('')}>返回列表</button></div><h2>{daily?'生产日报详情':'订单详情'}</h2>{!daily&&<p>订单：{id}</p>}
+  {daily&&!context.revisionId&&!busy&&!error?<p>当前记录暂无日报。</p>:error?<p role="alert">{error}</p>:busy?<p>正在加载关联记录…</p>:missing?<p>当前修订尚无唯一可展示的关联结果。</p>:current&&<BusinessForm key={current.name+JSON.stringify(context)} capability={current} session={session} defaults={context} contextual autoQuery/>}</>;
+ }
+ 
+diff --git a/order-center-web/src/api.ts b/order-center-web/src/api.ts
+index 73692da..2d38480 100644
+--- a/order-center-web/src/api.ts
++++ b/order-center-web/src/api.ts
+@@ -29,7 +29,7 @@ async function performRequest<T>(path:string, options:RequestInit={}):Promise<T>
+     const message=response.status===401?'请先通过企业登录入口登录。':response.status===403?'当前账号无权操作，或会话已过期，请重新连接。':response.status===409?(conflictMessages[code||'']||'数据或提交凭据已发生冲突，请查询当前结果后处理。'):response.status===422&&code==='EXPORT_TOO_LARGE'?'报告超过当前下载大小限制，请联系管理员处理。':response.status===400||response.status===422?'请检查填写的业务参数。':response.status===413?'提交内容过大。':'服务暂不可用，请查询处理结果或联系管理员。';
+     const initiatorMessages:Record<string,string>={INITIATOR_MOBILE_INVALID:'请填写发起人的11位有效手机号。',INITIATOR_NOT_FOUND:'钉钉通讯录未找到对应发起人，请核对手机号。',INITIATOR_DIRECTORY_LOOKUP_FAILED:'发起人查询失败，请核对手机号及钉钉通讯录权限。',INITIATOR_DIRECTORY_UNAVAILABLE:'钉钉通讯录暂不可用，未创建订单或日报，请稍后重试。'};
+     const attachmentDenied=response.status===403&&['/operations/order_attachment_list','/operations/order_attachment_get'].includes(path);
+-    const detail=code==='BOM_SYNC_NOT_CONFIGURED'?'同步执行器或专用账号尚未配置，请联系管理员完成同步配置。':attachmentDenied?'当前账号无权读取此请求的附件；附件仅对原提交账号开放。':initiatorMessages[code||'']||(path==='/dingtalk/login'&&response.status===403&&code==='ACCOUNT_LINK_REQUIRED'?'钉钉身份已验证，但尚未关联订单账号。请联系管理员关联并授权后重新连接。':message);
++    const detail=code==='BOM_SYNC_NOT_CONFIGURED'?'同步执行器或专用账号尚未配置，请联系管理员完成同步配置。':code==='REPORT_EXPORT_DISABLED'?'日报导出功能已关闭，请联系管理员开启。':attachmentDenied?'当前账号无权读取此请求的附件；附件仅对原提交账号开放。':initiatorMessages[code||'']||(path==='/dingtalk/login'&&response.status===403&&code==='ACCOUNT_LINK_REQUIRED'?'钉钉身份已验证，但尚未关联订单账号。请联系管理员关联并授权后重新连接。':message);
+     throw new ApiError(response.status,detail+(reference?' 请求编号：'+reference:''),code,reference||undefined);
+   }
+   if(!response.headers.get('content-type')?.includes('application/json'))throw new ApiError(502,'业务接口尚未就绪。');

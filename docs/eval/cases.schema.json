@@ -2,27 +2,59 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Jev dispatch evaluation case",
   "type": "object",
-  "required": ["id", "task", "workspaces", "sessions", "expected"],
+  "required": [
+    "id",
+    "task",
+    "workspaces",
+    "sessions",
+    "expected"
+  ],
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string" },
+    "id": {
+      "type": "string"
+    },
     "task": {
       "type": "object",
-      "required": ["title", "goal"],
+      "required": [
+        "title",
+        "goal"
+      ],
       "additionalProperties": false,
       "properties": {
-        "title": { "type": "string" },
-        "goal": { "type": "string" },
-        "acceptanceHints": { "type": "array", "items": { "type": "string" } },
-        "priority": { "type": "string", "enum": ["low", "normal", "high", "urgent"] }
+        "title": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        },
+        "acceptanceHints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "low",
+            "normal",
+            "high",
+            "urgent"
+          ]
+        }
       }
     },
     "command": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "text": { "type": "string" },
-        "workspaceHint": { "type": "string" }
+        "text": {
+          "type": "string"
+        },
+        "workspaceHint": {
+          "type": "string"
+        }
       }
     },
     "workspaces": {
@@ -30,14 +62,30 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "path": { "type": "string" },
-          "summary": { "type": "string" },
-          "recentTasks": { "type": "array", "items": { "type": "string" } }
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "recentTasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -45,29 +93,107 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "workspaceId", "title"],
+        "required": [
+          "id",
+          "workspaceId",
+          "title"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "workspaceId": { "type": "string" },
-          "title": { "type": "string" },
-          "lastActiveAt": { "type": "string" },
-          "contextUsage": { "type": "number", "minimum": 0, "maximum": 1 },
-          "archived": { "type": "boolean" }
+          "id": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "lastActiveAt": {
+            "type": "string"
+          },
+          "contextUsage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "archived": {
+            "type": "boolean"
+          }
         }
       }
     },
     "expected": {
       "type": "object",
-      "required": ["workspaceId", "mode"],
+      "required": [],
       "additionalProperties": false,
       "properties": {
-        "workspaceId": { "type": "string" },
-        "mode": { "type": "string", "enum": ["new", "attach"] },
-        "sessionId": { "type": "string" },
-        "note": { "type": "string" }
+        "workspaceId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "new",
+            "attach"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "needsConfirmation": {
+          "type": "boolean",
+          "description": "true=期望询问用户（needs_confirmation）；该案例不进 Top-1 分母，被自动派发放行按 precision 惩罚计错"
+        }
+      },
+      "description": "期望目标。常规案例必须含 workspaceId+mode（attach 另需 sessionId）；should-ask 案例只允许 needsConfirmation=true（不暴露 workspaceId/mode）。"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     },
-    "tags": { "type": "array", "items": { "type": "string" } }
+    "_provenance": {
+      "type": "object",
+      "description": "v2 标签/重建溯源（不参与 Jev 请求；请求只取 task/command/workspaces/sessions）。原始命令与标注规则来源。",
+      "additionalProperties": true,
+      "properties": {
+        "rawCommand": {
+          "type": "string"
+        },
+        "contextSummary": {
+          "type": "string"
+        },
+        "sourceSessionId": {
+          "type": "string"
+        },
+        "sourceWorkspaceId": {
+          "type": "string"
+        },
+        "messageIndex": {
+          "type": "number"
+        },
+        "messageTime": {
+          "type": "string"
+        },
+        "dispatchTime": {
+          "type": "string"
+        },
+        "summaryMode": {
+          "type": "string",
+          "enum": [
+            "semantic",
+            "placeholder"
+          ]
+        },
+        "reconstructedBy": {
+          "type": "string"
+        }
+      }
+    }
   }
 }

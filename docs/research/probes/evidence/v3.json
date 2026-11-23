@@ -1,0 +1,121 @@
+{
+  "at": "2026-11-17T08:29:14.546Z",
+  "cwd": "/tmp/dsh-commander-probe/ws1",
+  "envBools": {
+    "TYPESAFE_API_KEY": false
+  },
+  "services": {
+    "sessionController": "object",
+    "workspaceRegistry": "object",
+    "agents": "object",
+    "webServer": "object",
+    "capabilityPanel": "function",
+    "storageDomain": "object"
+  },
+  "controllerKeys": [
+    "agents",
+    "canOpenPath",
+    "commands",
+    "controlState",
+    "ctx",
+    "fileApplications",
+    "fork",
+    "historyController",
+    "listState",
+    "listWorkSliceMs",
+    "name",
+    "openFileApplication",
+    "openPath",
+    "promotions",
+    "revealPath",
+    "stateController",
+    "typertRemote",
+    "webController"
+  ],
+  "modelCatalog": {
+    "ok": true,
+    "value": {
+      "shape": 0,
+      "keys": [
+        "default",
+        "routableProviders",
+        "groups",
+        "failures"
+      ]
+    }
+  },
+  "create": {
+    "ok": true,
+    "value": {
+      "keys": [
+        "sessionId",
+        "agentPreset"
+      ],
+      "sessionId": "session-db06b330-872b-4bda-91c5-d9663f5d3b78"
+    }
+  },
+  "list": {
+    "ok": true,
+    "value": {
+      "count": 0,
+      "sampleKeys": []
+    }
+  },
+  "panelOnRealSession": {
+    "rank": {
+      "ok": true,
+      "value": {
+        "ok": false,
+        "code": "no-config",
+        "errors": [
+          "Jev API key is not configured"
+        ]
+      }
+    },
+    "applyCold": {
+      "ok": true,
+      "value": {
+        "ok": true,
+        "applied": 1,
+        "enabled": 0,
+        "disabled": 1,
+        "skipped": [],
+        "pending": false,
+        "elapsedMs": 17
+      }
+    },
+    "skillsSessionListView": {
+      "ok": true,
+      "value": {
+        "skills": 6,
+        "hiddenCount": 0
+      }
+    },
+    "applyAgain": {
+      "ok": true,
+      "value": {
+        "ok": true,
+        "applied": 0,
+        "enabled": 0,
+        "disabled": 0,
+        "skipped": [
+          {
+            "id": "cap_7505ed85594e36b0588421697e66d0f35727",
+            "reason": "already-applied"
+          }
+        ],
+        "pending": false,
+        "elapsedMs": 3
+      }
+    }
+  },
+  "agentsList": {
+    "ok": true,
+    "value": {
+      "count": 1,
+      "ids": [
+        "session-db06b330-872b-4bda-91c5-d9663f5d3b78"
+      ]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# V1 能力面板探针覆盖层（面板由 profile bundles 自带，此处只插入探针行）
+- insert:
+    - id: probe-v1
+      name: 'file:///Users/lzx/Documents/GitHub/dsh-commander/tools/validation/probes/probe-v1.mjs'
+      config:
+        outDir: /Users/lzx/Documents/GitHub/dsh-commander/.probe/evidence
+        cwd: /Users/lzx/Documents/GitHub/dsh-commander/.probe/ws-cold
+        panelPackageJson: /Users/lzx/Documents/GitHub/dsh-commander/.probe/home/profiles/probe/node_modules/dsh-capability-settings/package.json

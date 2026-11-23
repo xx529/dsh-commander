@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; width: 900px; height: 560px; overflow: hidden;
+    background: #141518; color: #e8eaed;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  .win { display: flex; height: 100%; }
+  .side { width: 210px; padding: 22px 18px; background: #101114; border-right: 1px solid #232529; }
+  .brand { display: flex; align-items: center; gap: 8px; color: #cfd3d8; font-size: 12px; font-weight: 600; }
+  .logo { width: 22px; height: 22px; border-radius: 6px; background: #4f7df3; display: grid; place-items: center; font-size: 11px; color: #fff; }
+  .tree { margin-top: 22px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #8d939b; }
+  .tree b { color: #e8eaed; font-weight: 500; }
+  .tree .row { padding: 6px 9px; border-radius: 6px; }
+  .tree .row.on { background: #1e2533; color: #a9c1ff; }
+  .tree .sub { padding-left: 22px; font-size: 11.5px; }
+  .main { flex: 1; padding: 26px 30px; }
+  .crumb { color: #7f858d; font-size: 11.5px; letter-spacing: .02em; }
+  .title { margin: 7px 0 0; font-size: 19px; font-weight: 650; letter-spacing: -.01em; }
+  .meta { margin-top: 5px; color: #7f858d; font-size: 11.5px; }
+  .panel { margin-top: 20px; border: 1px solid #26282d; border-radius: 10px; overflow: hidden; }
+  .panel-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #1a1b1f; border-bottom: 1px solid #26282d; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #3ecf8e; }
+  .panel-head b { font-size: 12px; font-weight: 600; }
+  .panel-head span { margin-left: auto; color: #7f858d; font-size: 10.5px; }
+  pre { margin: 0; padding: 16px 18px 18px; font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.95; color: #c9cdd3; }
+  .k { color: #8ab4ff; } .s { color: #f0b27a; } .c { color: #6f757d; } .ok { color: #5bd6a0; } .warn { color: #f2c15c; }
+  .table { margin-top: 16px; border: 1px solid #26282d; border-radius: 10px; overflow: hidden; }
+  .tr { display: grid; grid-template-columns: 1.5fr 1fr .8fr; gap: 10px; padding: 9px 14px; border-top: 1px solid #232529; font-size: 11.5px; color: #aeb3ba; }
+  .tr:first-child { border-top: 0; background: #1a1b1f; color: #7f858d; font-size: 10.5px; letter-spacing: .03em; }
+  .tr b { color: #e8eaed; font-weight: 500; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; background: #1e2533; color: #a9c1ff; font-size: 10px; }
+  .tag.green { background: #14281f; color: #5bd6a0; }
+  .tag.amber { background: #2a2416; color: #f2c15c; }
+</style>
+</head>
+<body>
+  <div class="win">
+    <aside class="side">
+      <div class="brand"><span class="logo">H</span> Htdot-OrderCenter</div>
+      <div class="tree">
+        <div class="row">config/</div>
+        <div class="row sub"><b>llm.yaml</b></div>
+        <div class="row sub on">models.yaml</div>
+        <div class="row">src/</div>
+        <div class="row">docs/</div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="crumb">config / llm.yaml</div>
+      <h1 class="title">订单中心 · 模型调用配置</h1>
+      <div class="meta">Htdot-OrderCenter · 最后修改 2026-11-19 19:28 · 工作会话交付</div>
+      <div class="panel">
+        <div class="panel-head"><span class="dot"></span><b>llm.yaml</b><span>只读快照</span></div>
+        <pre><span class="k">provider</span>: <span class="s">bigmodel</span>
+<span class="k">base_url</span>: <span class="s">https://open.bigmodel.cn/api/paas/v4</span>
+<span class="k">model</span>: <span class="ok">glm-4.6</span>            <span class="c"># 当前订单链路</span>
+<span class="k">alias</span>: <span class="ok">glm-4.6</span>            <span class="c"># 与法律版 SKU 不同别名</span>
+<span class="k">temperature</span>: <span class="s">0.2</span>
+<span class="k">stream</span>: <span class="s">true</span>
+<span class="k">fallback</span>: <span class="s">glm-4.5</span>          <span class="c"># 回滚开关已配置</span></pre>
+      </div>
+      <div class="table">
+        <div class="tr"><span>模型 / 别名</span><span>状态</span><span>窗口内变更</span></div>
+        <div class="tr"><b>glm-4.6</b><span class="tag green">订单中心在用</span><span>无</span></div>
+        <div class="tr"><b>glm-5.3-flash</b><span class="tag">在架</span><span>无</span></div>
+        <div class="tr"><b>glm-5.3-flash-legal</b><span class="tag amber">独立 SKU</span><span>新增 · 非 breaking</span></div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

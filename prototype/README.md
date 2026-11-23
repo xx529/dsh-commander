@@ -70,3 +70,12 @@ OpenDesign 生成的高保真桌面原型，1440×900，六屏。一期只存在
 - 面板消息区可滚动；初始聚焦派发卡，自定义时收起候选列表，派发后展示完整对话。
 - 审批卡为窄版，短标签「总是允许」；完整语义「本工作区总是允许」在文档中说明。
 - 数据为示例（HtDot / Mira / Live），不含真实 token 或内部信息。
+
+## 另见
+
+- `panel-redesign/`：2026-11-18 指挥官面板交互重设计（A/B/C 三方案，**C 为默认**：动作坞 / 双栏收件栏 / 处理抽屉），含悬浮球重做；`?variant=A|B|C`、`?ball=ink`。
+- `task-detail/`：2026-11-18 任务详情抽屉 A–D 方案（D 编年审阅为生产基础）；`?variant=A|B|C|D`。
+- `task-detail-multiround/`：2026-11-19 多轮任务详情设计（标题优先 + 轮次编年 + 用户原话/派发原文进时间线 + 继续派发 composer）；`?expand=1` / `?compose=1`，配套 `docs/architecture/m5-continue-dispatch.md`。
+- `task-detail-materials/`：2026-11-20 多轮任务详情的「依据与材料」设计（结论下的链接 / 文档 / 图片、来源与未校验标记、验收项 chips、图片预览与文件动作单）；`?materials=all` / `?focus=materials` / `?lightbox=1` / `?sheet=1`。
+- `task-detail-materials-per-item/`：方案 B · 每条验收项独立材料表（报告级材料块移除，材料跟着验收走）。
+- `task-detail-materials-compare/`：方案 A（报告级）vs B（逐项）并排对比 + 取舍表 + 推荐 C（默认 A、逐项按需展开 B）。

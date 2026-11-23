@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../../packages/dsh-commander/lib/host",
+    "rootDir": "host",
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "../../../packages/dsh-commander/node_modules/@types"
+    ]
+  },
+  "include": [
+    "host/**/*.ts"
+  ],
+  "exclude": [
+    "../../../packages/dsh-commander/lib",
+    "../../../packages/dsh-commander/node_modules"
+  ]
+}
