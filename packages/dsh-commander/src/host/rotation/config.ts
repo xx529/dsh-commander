@@ -39,9 +39,27 @@ export function resolveRotation(config: ConfigRecord): ResolvedRotation {
   }
 }
 
-/** 下一次到点时间（ms）。 */
+/** 本地时区的当天 00:00（自然日对齐用；按日历计算，跨时区/夏令时也正确）。 */
+export function startOfLocalDay(at: number): number {
+  const date = new Date(at)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+/** 本地日历加天数（按日历日推进，不是固定毫秒）。 */
+export function addLocalDays(at: number, days: number): number {
+  const date = new Date(at)
+  date.setDate(date.getDate() + days)
+  return date.getTime()
+}
+
+/**
+ * 下一次到点时间（ms）：**本任开始日 + periodDays 的本地 00:00**。
+ * 例：11-23 10:45 开始、周期 1 天 → 11-24 00:00；周期 3 天 → 11-26 00:00。
+ * 只决定“从什么时候起可以换任”；实际仍在 turn/end 或投递前的懒检查里触发。
+ */
 export function rotationDueAt(resolved: Pick<ResolvedRotation, 'generationStartedAt' | 'periodDays'>): number {
-  return resolved.generationStartedAt + resolved.periodDays * ROTATION_DAY_MS
+  return addLocalDays(startOfLocalDay(resolved.generationStartedAt), resolved.periodDays)
 }
 
 /**

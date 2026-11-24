@@ -636,7 +636,11 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
             <span className="dshc-kv-value">{t('settings.rotation.generation').replace('{n}', String(rotation.generation))}</span>
             <span>{t('settings.rotation.nextDue')}</span>
             <span className="dshc-kv-value" data-muted={rotation.due ? undefined : 'true'}>
-              {rotation.enabled ? formatRotationDue(rotation.dueAt) : t('settings.rotation.off')}
+              {rotation.enabled
+                ? (rotation.due
+                    ? `${formatRotationDue(rotation.dueAt)} · ${t('settings.rotation.pending')}`
+                    : formatRotationDue(rotation.dueAt))
+                : t('settings.rotation.off')}
             </span>
             {rotation.lastError === undefined ? null : (
               <>

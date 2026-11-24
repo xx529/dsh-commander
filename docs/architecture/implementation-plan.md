@@ -336,7 +336,7 @@ export const commanderDomain = defineDomain({
 > 唯一口径：`docs/architecture/rotation-contract-patch.md`（本小节只列骨架）。用户 2026-11-19 决策：默认关；周期 1–7 天；`turn/end` 触发 + 投递前兜底；简报含用户最近原话；context 注入交付。
 
 - **开关**：`config.commander.rotation = { enabled(false), periodDays(1, 1..7), includeUserTail(true), generation?, generationStartedAt? }`。关闭时无任何行为差异，唯一路径仍是设置页「绑定到新会话」，且**不生成简报**。
-- **到点判定**：`now - generationStartedAt >= periodDays*86_400_000`（纯时间差，无定时器、无 scheduler）。
+- **到点判定**：`now >= dueAt`，`dueAt` = 本任开始日 + `periodDays` 的**本地 00:00**（自然日对齐；无定时器、无 scheduler，仍在 `turn/end` / 投递前懒检查）。
 - **门控**：不 busy + 无 `pendingDispatch` + 无未 flush 的看板注入 + 无并发换任 + 本周期有活动；不满足则跳过、下次边界重试。
 - **触发**：① 指挥官会话 `turn/end`（异步、不阻塞）；② `POST /commander/message` 在 `admit()` 之后、`prompt()` 之前兜底换任（失败不阻塞投递）；③ 手动 `POST /commander/rotation`（`force` 跳过周期/活动判定）。
 - **简报**：`buildHandoffBrief` 纯函数，从 tasks + 旧会话用户原话确定性生成，≤4096 字；不含 Jev 配置/工具结果/审批内容。

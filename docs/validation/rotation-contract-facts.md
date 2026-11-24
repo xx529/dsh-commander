@@ -57,7 +57,7 @@
 | 用户决策 | 契约落点 | 自检 |
 |---|---|---|
 | D1 默认关；关闭态只有手动「绑定新会话」，且**不做总结** | `rotation.enabled=false`；`POST /commander/binding` 不注入简报；A7 回归用例 | ✅ 无路径冲突 |
-| D2 周期 1–7 天，默认 1 | `periodDays` 校验 1..7；纯时间差不依赖时区 | ✅ |
+| D2 周期 1–7 天，默认 1 | `periodDays` 校验 1..7；**v1.3 起改为自然日本地 00:00 对齐**（原为纯时间差，2026-11-24 按用户要求调整） | ✅ |
 | D3 简报带用户最近原话 | `includeUserTail=true`，≤10 条 / ≤800 字，来源会话事件 `source.kind==='user'` | ✅（不依赖 C9） |
 | D4 `turn/end` 触发 + 消息前兜底 | §3.3 A/B 两个触发点；失败不阻塞投递 | ✅ |
 | D5 context 注入交付 | §5 `agent.inject` + `buildContextMessage` | ✅（F1/F2/C1） |

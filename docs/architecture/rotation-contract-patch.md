@@ -1,6 +1,6 @@
 # R1 契约补丁（指挥官会话轮换 · 交接简报）
 
-> 版本：v1.2　日期：**2026-11-20（Asia/Shanghai）**　状态：**已实现并自测通过**（2026-11-19；证据 `docs/validation/rotation-implementation.md`）。实现以本文件为唯一口径。
+> 版本：v1.3　日期：**2026-11-24（Asia/Shanghai）**　状态：**已实现并自测通过**（2026-11-19；证据 `docs/validation/rotation-implementation.md`）。实现以本文件为唯一口径。
 > 依据：用户 2026-11-19 三轮决策——**D1 默认关**、**D2 交接简报带用户最近原话**、**D3 `turn/end` 触发 + 投递前兜底**；以及「先落到文档、再验证」的交付顺序。
 > 平台基线：`@deepseek-ai/dsh 0.2.2-rc.3`（desktop profile）；事实核对见 `docs/validation/rotation-contract-facts.md`。
 > 边界：**不新增存储表**、**不新增 DSH 会话事件类型**、不改 M0/M1R/M2/M3 已验收行为、不改 V0/V5 裁定、不写实现。
@@ -12,7 +12,7 @@
 | # | 主题 | 唯一口径 |
 |---|---|---|
 | 1 | 开关 | `config.commander.rotation.enabled` **默认 `false`**。关闭时系统行为与现状完全一致（只有设置页「绑定到新会话」这一条手动路径，**不生成任何简报**）。 |
-| 2 | 周期 | `periodDays` 整数 **1–7**，默认 `1`。时间差判定（`now - generationStartedAt >= periodDays*86_400_000`），**与时区/自然日无关**；展示用本地时区。 |
+| 2 | 周期 | `periodDays` 整数 **1–7**，默认 `1`。**自然日 00:00 对齐**：`dueAt = 本任开始日 + periodDays 天的本地 00:00`（例：11-23 10:45 开始、1 天 → 11-24 00:00）。仍然只在 `turn/end` / 投递前懒检查，不跑午夜定时器。 |
 | 3 | 触发 | 一级：指挥官会话 `turn/end`（异步、不阻塞）；二级兜底：`POST /commander/message` 投递前；手动：`POST /commander/rotation`（仅 `enabled=true` 时可用）。**不做定时器**（插件无 scheduler 冻结决策）。 |
 | 4 | 门控 | 到点只是必要条件；还必须 `!busy` + 无 `pendingDispatch` + 无未 flush 的看板注入 + 无并发换任。任一不满足 → 本次跳过，下次边界重试。 |
 | 5 | 简报 | **确定性生成**（零模型调用）：本周期任务罗列 + 当前未完成 + 用户最近原话（≤10 条、总 ≤800 字、默认开）+ 实时看板提示。总量 ≤4096 字。 |
@@ -85,7 +85,7 @@ function rotationPhase(input: {
 
 ```text
 1. enabled === true                       否 → 跳过（关闭态完全不进入本流程）
-2. now - generationStartedAt >= periodDays*86400000   否 → 跳过
+2. now >= dueAt（dueAt = 本任开始日 + periodDays 的本地 00:00）   否 → 跳过
 3. rotating === false                     否 → 跳过（并发保护）
 4. 安全边界：
    a. 指挥官会话不 busy（turn 已结束）
@@ -216,7 +216,7 @@ const message = buildContextMessage(brief.text, {
 interface RotationConfig {
   /** 默认 false；关闭时轮换路由不可用、面板无入口。 */
   enabled: boolean
-  /** 1..7，默认 1。 */
+  /** 1..7，默认 1；到期时间按自然日本地 00:00 对齐。 */
   periodDays: number
   /** 是否把用户最近原话放进简报，默认 true。 */
   includeUserTail: boolean
@@ -229,7 +229,7 @@ interface RotationConfig {
 
 - 读取归一化：`rotation === undefined` → `{ enabled:false, periodDays:1, includeUserTail:true, generation: <现有 commander 记录数 + 1>, generationStartedAt: <绑定时间或 config.updatedAt> }`；**不主动写盘**，等用户保存或首次轮换时才落库。
 - `PUT /commander/config` 校验：`periodDays` 必须是 1–7 的整数（`invalid_request` + `field='commander.rotation.periodDays'`）；`enabled/includeUserTail` 必须是布尔；`generation*` 由 Host 管理，**patch 里出现即拒绝**（`field='commander.rotation.generation'`）。
-- 用户把 `enabled` 从 false 改成 true 且 `generationStartedAt` 为空时，Host 在写配置时补 `now`（避免一开就立刻换任）。
+- 用户把 `enabled` 从 false 改成 true 且 `generationStartedAt` 为空时，Host 在写配置时补 `now` 作为本任起点（下次到期 = 次日 00:00）。
 - `GET /commander/config` 返回只读视图（保留现有字段，追加 `rotation`）。
 
 ### 6.2 `SessionLinkRecord`（sessions 表，加法式）
@@ -302,8 +302,8 @@ interface RotationView {
   includeUserTail: boolean
   generation: number
   startedAt: number
-  dueAt: number          // startedAt + periodDays*86400000
-  due: boolean           // enabled && now >= dueAt
+  dueAt: number          // 本任开始日 + periodDays 的本地 00:00
+  due: boolean           // enabled && now >= dueAt（dueAt 为本地 00:00）
   rotating: boolean
   lastError?: { code: string; message: string; at: number }
 }

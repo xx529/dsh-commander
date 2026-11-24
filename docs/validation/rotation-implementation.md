@@ -9,7 +9,7 @@
 
 R1 已按契约实现：**默认关闭**；启用后按 1–7 天周期在 `turn/end`（投递前兜底）换任，新会话通过 `inject` 拿到确定性交接简报，旧会话标 `retired` 保留、可绑回。
 
-验证：**typecheck PASS；单测 332/332 PASS；build PASS；client harness 51/51 + 173/173 PASS；M2/M3 e2e 回归 25/25 PASS；R1 隔离 e2e 18/18 PASS**。
+验证：**typecheck PASS；单测 407/407 PASS；build PASS；client harness 51/51 + 182/182 PASS；M2/M3 e2e 回归 25/25 PASS；R1 隔离 e2e 18/18 PASS**。
 仍未覆盖的只有 2 项运行时观察（§5）：简报进入真实首个 turn 的请求体、live 上下文卡渲染 / 前任点击。
 
 ## 1. 变更清单
@@ -29,10 +29,10 @@ R1 已按契约实现：**默认关闭**；启用后按 1–7 天周期在 `turn
 | 层 | 命令 | 结果 |
 |---|---|---|
 | 类型 | `pnpm --filter dsh-commander typecheck` | **PASS**（host + client） |
-| 单测 | `pnpm --filter dsh-commander test` | **332/332 PASS**（原 306 + 9 brief + 12 rotation 集成 + 5 client） |
+| 单测 | `pnpm --filter dsh-commander test` | **407/407 PASS**（含期间工作树新增的任务查询等测试；本次新增 `rotation-config` 5 条） |
 | 构建 | `pnpm --filter dsh-commander build` | **PASS**（`lib/host/**`、`lib/client.js` 370,287B、`lib/window.js`） |
 | bundle 校验 | `node tools/dev/verify-bundle.mjs packages/dsh-commander/lib/client.js dsh-commander` | **exit 0**（id/exports/react external 全过） |
-| client harness | `DSH_COMMANDER_HARNESS_MODULES=… node packages/dsh-commander/tests/client/harness/run-harness.mjs` | **smoke 51/51 + interact 173/173 PASS** |
+| client harness | `DSH_COMMANDER_HARNESS_MODULES=… node packages/dsh-commander/tests/client/harness/run-harness.mjs` | **smoke 51/51 + interact 182/182 PASS** |
 | M2/M3 回归 e2e | `node packages/dsh-commander/tests/e2e/m23-e2e.mjs` | **25/25 PASS**（默认关闭 → 无行为差异） |
 | R1 隔离 e2e | `node packages/dsh-commander/tests/e2e/r1-e2e.mjs` | **18/18 PASS**（证据 `tests/artifacts/r1/e2e/`） |
 
@@ -88,7 +88,23 @@ R1 e2e 关键证据（`tests/artifacts/r1/e2e/rotation.json` / `state-after.json
 2. 页脚删除「更早的细节可打开第 N 任会话查看」——历史任务走看板/会话既有能力，简报不做导航；只保留 `board_query` 提示。
 3. 模型未配置时头部显示「模型：未设置」，不再出现「未设置/未设置」。
 
-**复跑**：单测 **332/332**、`build` PASS、R1 e2e **18/18**、client harness **51/51 + 173/173**。**待 live 确认**：新简报能带上当天任务（用户下次换任时观察）。
+**复跑**：单测 **407/407**、`build` PASS、R1 e2e **18/18**、client harness **51/51 + 182/182**。**待 live 确认**：新简报能带上当天任务（用户下次换任时观察）。
+
+## 5B. Hotfix 2026-11-24（自然日 00:00 对齐）
+
+**用户反馈**：设置页「下次换任」显示 `2026-11-24 10:45`，期望按 00:00 基准。
+
+**原因**：v1.2 及之前 `dueAt = generationStartedAt + periodDays×86400000`，本任 11-23 10:45 开始 → 下次 11-24 10:45（滚动周期，不是自然日）。
+
+**修复**（契约 v1.3）：
+
+1. `dueAt = 本任开始日 + periodDays 的本地 00:00`（`startOfLocalDay` + `addLocalDays`，按日历推进，跨月/跨年正确）。
+   - 11-23 10:45 开始、1 天 → **11-24 00:00**；3 天 → 11-26 00:00。
+2. 仍然是懒轮换：到点后在下一次 `turn/end` 或投递前触发，不跑午夜定时器；关机跨天不丢。
+3. 设置页：已到点但还没活动时显示「已到点 · 下次活动时换任」，不再显示一个已经过去的时间（i18n zh/en 已补）。
+4. 简报窗口不变（`min(本任起点, now−周期)`），自然日对齐后窗口≈前 N 个自然日。
+
+**复跑**：单测 **407/407**（新增 `tests/unit/rotation-config.test.ts` 5 条）、`build` PASS、R1 e2e **18/18**、client harness **51/51 + 182/182**。
 
 ## 6. 部署说明（安装由用户执行）
 
