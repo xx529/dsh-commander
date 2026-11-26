@@ -36,6 +36,7 @@
     }
   },
   "scripts": {
+    "prepare": "node scripts/prepare-install.mjs",
     "build": "pnpm run build:host && pnpm run build:client && pnpm run build:window",
     "build:host": "tsc -p tsconfig.host.json",
     "build:client": "tsdown && node ../../tools/dev/wrap-client.mjs dsh-commander lib/client.cjs lib/client.js",
