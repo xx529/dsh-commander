@@ -141,8 +141,10 @@ export interface FakeSessionController extends SessionControllerService {
   created: Array<Record<string, unknown>>
   prompts: Array<Record<string, unknown>>
   modelSelections: Array<Record<string, unknown>>
+  renames: Array<{ sessionId: string; title: string }>
   nextSessionId: string
   failCreate?: Error
+  failRename?: Error
   promptAccepted: boolean
   promptError?: Error
 }
@@ -156,6 +158,7 @@ export function createFakeSessionController(): FakeSessionController {
     created: [],
     prompts: [],
     modelSelections: [],
+    renames: [],
     nextSessionId: 'session-fake-1',
     promptAccepted: true,
     async create(request) {
@@ -172,6 +175,12 @@ export function createFakeSessionController(): FakeSessionController {
       assertReceiver(this, 'selectModel')
       controller.modelSelections.push(request)
       return request
+    },
+    async rename(request) {
+      assertReceiver(this, 'rename')
+      if (controller.failRename !== undefined) throw controller.failRename
+      controller.renames.push(request)
+      return { title: request.title, seq: 1 }
     },
     async prompt(request, signal) {
       assertReceiver(this, 'prompt')

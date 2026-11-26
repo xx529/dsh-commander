@@ -39,7 +39,7 @@ interface QueueEntry {
   acceptedTaskId?: string
 }
 
-export function buildUnblockedText(task: TaskRecord, lookup: (id: string) => TaskRecord | undefined, acceptedTaskId?: string): string {
+export function buildUnblockedText(task: TaskRecord, lookup: (id: string) => TaskRecord | undefined, acceptedTaskId?: string, acceptNote?: { text: string }): string {
   const deps = task.dependsOn ?? []
   const lines = [`[task-unblocked] taskId=${task.id} status=${task.status}`]
   if (acceptedTaskId !== undefined && acceptedTaskId !== '') {
@@ -48,7 +48,11 @@ export function buildUnblockedText(task: TaskRecord, lookup: (id: string) => Tas
   } else {
     lines.push('依赖已全部验收通过；本任务已满足依赖。')
   }
-  lines.push(`请调用 commander_task_dispatch(taskId=${task.id}, requestId=<新ID>, instruction=<若需要>) 派发。`)
+  if (acceptNote !== undefined && acceptNote.text !== '') {
+    lines.push('用户在验收时留下的交接说明（请原文写进下一任务的 prompt）：')
+    lines.push(acceptNote.text)
+  }
+  lines.push(`请调用 commander_task_dispatch(taskId=${task.id}, requestId=<新ID>, prompt=<你写给工作会话的全文>) 派发。`)
   lines.push('首次仍走确认（或按 autoDispatch 配置自动派发）。本次只提醒，不改任务状态。')
   lines.push('---', `dependsOn=${deps.join(',')}`)
   return lines.join('\n')
@@ -116,8 +120,9 @@ export function createDependencyNotifier(deps: DependencyNotifierDeps): Dependen
         if (task === undefined || (task.status !== 'draft' && task.status !== 'proposed') || task.dependencyNotifiedAt !== undefined) continue
         if (!isReady(task, lookup)) continue
         const at = now()
+        const acceptedTask = entry.acceptedTaskId !== undefined ? deps.stores.tasks.get(entry.acceptedTaskId) : undefined
         try {
-          await deps.deliverer.deliverContextMessage(buildUnblockedText(task, lookup, entry.acceptedTaskId), `task-unblocked-${task.id}-${String(at)}`, {
+          await deps.deliverer.deliverContextMessage(buildUnblockedText(task, lookup, entry.acceptedTaskId, acceptedTask?.acceptNote), `task-unblocked-${task.id}-${String(at)}`, {
             kind: 'commander-task-unblocked',
             summary: '依赖已满足，可派发',
           })

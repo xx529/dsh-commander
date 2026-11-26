@@ -1,11 +1,11 @@
-// 提交（确认后执行）：create/attach 会话 → capability auto（仅 new+policy=auto）→ prompt brief。
+// 提交（确认后执行）：create/attach 会话 → capability auto（仅 new+policy=auto）→ prompt。
 // 契约：m1-contract-patch §1.6；session.create 二选一（M0-H1 合同）；prompt 保留 receiver + AbortSignal（M0 教训）。
+// 2026-11-26 起：工作会话首条消息 = 指挥官给的 prompt，Host 原样透传（零拼接、零截断，见 dispatch-prompt-passthrough.md）。
 import type { CordisContext, SessionControllerService } from '../dsh-types.ts'
 import type { CapabilityPlan, TaskRecord } from '../schema.ts'
 import type { StoreSet } from '../store/index.ts'
 import type { ConfirmationCandidate } from './candidates.ts'
 import { runAutoCapability } from './capability.ts'
-import { buildDispatchBrief } from './brief.ts'
 
 export type SpawnErrorCode = 'session_create_failed' | 'delivery_failed' | 'invalid_target' | 'unknown_task'
 
@@ -16,11 +16,9 @@ export interface SpawnInput {
   decisionId: string
   target: ConfirmationCandidate
   requestId: string
+  /** 指挥官写好的工作会话首条消息全文（原样投递）。 */
+  prompt: string
   capabilityNeeds?: string[]
-  round?: number
-  instruction?: string
-  previousSummary?: string
-  previousAcceptance?: import('../schema.ts').AcceptanceItem[]
   now?: () => number
   /** 测试注入：会话创建/prompt。 */
   controllerOverride?: SessionControllerService
@@ -32,7 +30,8 @@ export interface SpawnResult {
   sessionId: string
   sessionCreated: boolean
   capabilities?: CapabilityPlan
-  brief: string
+  /** 实际投递的原文（= 输入 prompt）。 */
+  prompt: string
 }
 
 export interface SpawnFailure {
@@ -45,7 +44,7 @@ export interface SpawnFailure {
 const controllerOf = (ctx: CordisContext, override?: SessionControllerService): SessionControllerService | undefined =>
   override ?? (ctx.get('sessionController') as SessionControllerService | undefined)
 
-/** 构造 brief 用 draft（能力面板 rank 的 draft = 任务目标 + 能力需求建议）。 */
+/** 构造能力面板 rank 的 draft（draft = 任务目标 + 能力需求建议；与派发消息无关）。 */
 export function capabilityDraft(task: Pick<TaskRecord, 'title' | 'goal'>, capabilityNeeds: string[] | undefined): string {
   const needs = (capabilityNeeds ?? []).slice(0, 10).join('；')
   return needs === '' ? `${task.title}\n${task.goal}` : `${task.title}\n${task.goal}\n能力需求：${needs}`
@@ -92,23 +91,10 @@ export async function spawnDispatch(input: SpawnInput): Promise<SpawnResult | Sp
   } else if (sessionId === '') {
     return { ok: false, code: 'invalid_target', message: 'attach target requires sessionId' }
   }
-  const sameSession = input.target.mode === 'attach'
-    && input.target.sessionId !== undefined
-    && input.task.primarySessionId !== undefined
-    && input.target.sessionId === input.task.primarySessionId
-  const brief = buildDispatchBrief({
-    title: input.task.title,
-    goal: input.task.goal,
-    acceptance: input.task.acceptance,
-    ...(input.round !== undefined ? { round: input.round } : {}),
-    ...(sameSession ? { sameSession: true } : {}),
-    ...(input.instruction !== undefined ? { instruction: input.instruction } : {}),
-    ...(input.previousSummary !== undefined ? { previousSummary: input.previousSummary } : {}),
-    ...(input.previousAcceptance !== undefined ? { previousAcceptance: input.previousAcceptance } : {}),
-  })
   try {
+    // 原样投递：不拼模板、不加前后缀、不截断（用户 2026-11-26 口径）。
     const result = await controller.prompt(
-      { requestId: input.requestId, sessionId, mode: 'queue', content: [{ type: 'text', text: brief }] },
+      { requestId: input.requestId, sessionId, mode: 'queue', content: [{ type: 'text', text: input.prompt }] },
       new AbortController().signal,
     )
     if (result?.accepted !== true) {
@@ -117,5 +103,5 @@ export async function spawnDispatch(input: SpawnInput): Promise<SpawnResult | Sp
   } catch (error) {
     return { ok: false, code: 'delivery_failed', message: String((error as Error)?.message ?? error).slice(0, 300), sessionId }
   }
-  return { ok: true, sessionId, sessionCreated, ...(capabilities !== undefined ? { capabilities } : {}), brief }
+  return { ok: true, sessionId, sessionCreated, ...(capabilities !== undefined ? { capabilities } : {}), prompt: input.prompt }
 }

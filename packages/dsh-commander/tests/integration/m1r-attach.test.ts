@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { apply } from '../../src/host/index.ts'
 import { createStores } from '../../src/host/store/index.ts'
 import { commanderDomainSpec } from '../../src/host/domain.ts'
-import { createDispatchService } from '../../src/host/dispatch/service.ts'
+import { createDispatchService, type DispatchService, type DispatchTaskArgs, type DispatchTaskResult } from '../../src/host/dispatch/service.ts'
 import { defaultWorkspaceRecord, type TaskRecord } from '../../src/host/schema.ts'
 import {
   createFakeCapabilityPanel,
@@ -15,6 +15,13 @@ import {
   createFakeWebServer,
   createFakeWorkspaceRegistry,
 } from '../fakes/fakes.ts'
+
+/** 派发消息由指挥官写：默认原文只用于跑通链路；需要验证「原样透传」的用例单独传 prompt。 */
+const WORKER_PROMPT = '工作会话首条消息（测试）：按任务完成并给出证据。'
+const dispatchWith = (service: Pick<DispatchService, 'dispatchTask'>, args: DispatchTaskArgs): Promise<DispatchTaskResult> =>
+  // 首派（无 decisionId）默认补一份原文；确认调用不补，验证「省略 prompt 复用确认卡」的语义。
+  service.dispatchTask(args.decisionId === undefined ? { prompt: WORKER_PROMPT, ...args } : args)
+
 
 const SESSIONS = [
   // 归档会话排在最前：验证「先剔除归档再取 limit」（否则归档会话会占满名额）。
@@ -180,12 +187,12 @@ test('M1R sessions route: limit 校验与 subagent 子会话过滤（契约 §1.
 test('M1R attach confirm dispatches to existing session without capability panel and writes link/assignment', async () => {
   const panel = createFakeCapabilityPanel({ items: [{ id: 'cap_x', name: 'browser', score: 0.99 }], threshold: 0.5 })
   const { stores, dispatch, controller } = await setup({ panel })
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_attach_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_attach_1' })
   assert.equal(first.status, 'needs_confirmation')
   if (first.status !== 'needs_confirmation') return
   assert.equal(first.recommendation.mode, 'attach')
   assert.equal(first.recommendation.sessionId, 'session-a1')
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_attach_2' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_attach_2' })
   assert.equal(confirmed.status, 'dispatched')
   if (confirmed.status !== 'dispatched') return
   assert.equal(confirmed.sessionCreated, false)
@@ -205,15 +212,15 @@ test('M1R attach confirm dispatches to existing session without capability panel
 
 test('M1R attach validation: missing session / cross workspace / archived are rejected', async () => {
   const { dispatch } = await setup()
-  const base = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_val_1' })
+  const base = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_val_1' })
   if (base.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const missing = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: base.decisionId, confirmTarget: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'no-such-session' }, requestId: 'req_val_2' })
+  const missing = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: base.decisionId, confirmTarget: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'no-such-session' }, requestId: 'req_val_2' })
   assert.equal(missing.status, 'rejected')
   if (missing.status === 'rejected') assert.equal(missing.code, 'invalid_target')
-  const cross = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: base.decisionId, confirmTarget: { workspaceId: 'ws-b', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_val_3' })
+  const cross = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: base.decisionId, confirmTarget: { workspaceId: 'ws-b', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_val_3' })
   assert.equal(cross.status, 'rejected')
   if (cross.status === 'rejected') assert.match(cross.message, /不存在、已归档、是子代理\/teammate 会话或不属于/)
-  const archived = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: base.decisionId, confirmTarget: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a2' }, requestId: 'req_val_4' })
+  const archived = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: base.decisionId, confirmTarget: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a2' }, requestId: 'req_val_4' })
   assert.equal(archived.status, 'rejected')
   if (archived.status === 'rejected') assert.match(archived.message, /已归档/)
 })
@@ -225,9 +232,9 @@ test('M1R attach: same session may be attached by multiple tasks (contract §1.2
     v: 1, id: 'task_other', title: 'other', goal: 'g', status: 'running', workspaceId: 'ws-a', priority: 'normal',
     commandId: '', assignments: ['session-a1'], acceptance: [], timeline: [], version: 1, createdAt: 1, updatedAt: 1, lastActivityAt: 1,
   })
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_multi_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_multi_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_multi_2' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_multi_2' })
   assert.equal(result.status, 'dispatched') // 不因其它任务占用而拒绝
   assert.deepEqual(stores.tasks.get('task_1')?.assignments, ['session-a1'])
   // 已有任务的 assignment 不应被覆盖
@@ -236,14 +243,14 @@ test('M1R attach: same session may be attached by multiple tasks (contract §1.2
 
 test('M1R attach: decision replay idempotent and expired decision rejected', async () => {
   const { dispatch } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_idem_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'attach', sessionId: 'session-a1' }, requestId: 'req_idem_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_idem_2' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_idem_2' })
   assert.equal(confirmed.status, 'dispatched')
-  const replay = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_idem_3' })
+  const replay = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_idem_3' })
   assert.equal(replay.status, 'dispatched')
   if (confirmed.status === 'dispatched' && replay.status === 'dispatched') assert.equal(replay.sessionId, confirmed.sessionId)
-  const expired = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: 'dec_unknown_0000000000000000', confirmTarget: first.recommendation, requestId: 'req_idem_4' })
+  const expired = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: 'dec_unknown_0000000000000000', confirmTarget: first.recommendation, requestId: 'req_idem_4' })
   assert.equal(expired.status, 'rejected')
   if (expired.status === 'rejected') assert.equal(expired.code, 'decision_expired')
 })
@@ -251,10 +258,10 @@ test('M1R attach: decision replay idempotent and expired decision rejected', asy
 test('M1R attach to session in second workspace succeeds (no capability panel on attach)', async () => {
   const panel = createFakeCapabilityPanel({ items: [{ id: 'cap_y', name: 'shell', score: 0.9 }], threshold: 0.1 })
   const { stores, dispatch, controller } = await setup({ panel })
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'ws-b', mode: 'attach', sessionId: 'session-b1' }, requestId: 'req_wsb_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'ws-b', mode: 'attach', sessionId: 'session-b1' }, requestId: 'req_wsb_1' })
   assert.equal(first.status, 'needs_confirmation')
   if (first.status !== 'needs_confirmation') return
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_wsb_2' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_wsb_2' })
   assert.equal(confirmed.status, 'dispatched')
   if (confirmed.status !== 'dispatched') return
   assert.equal(confirmed.sessionId, 'session-b1')

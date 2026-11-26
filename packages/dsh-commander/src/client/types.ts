@@ -185,8 +185,6 @@ export interface TaskView {
   sessionCount?: number
   updatedAt?: number
   lastActivityAt?: number
-  /** M2 read-only derived flag (queued/running idle > 20min). */
-  stale?: boolean
   /** M2 read-only derived counts for the board card. */
   acceptanceCount?: number
   evidenceInsufficientCount?: number
@@ -197,6 +195,12 @@ export interface TaskView {
   dependsOn?: string[]
   waitingFor?: string[]
   ready?: boolean
+  /** 是否仍有未终结的后继任务（验收时是否要求交接说明 / 指挥官能否验收）。 */
+  hasPendingDependents?: boolean
+  /** 最近一次验收来源：人/指挥官；旧记录缺省视为人。 */
+  acceptedBy?: 'user' | 'commander'
+  /** 最近一次验收的交接说明（detail 载荷）。 */
+  acceptNote?: { text?: string; at?: number; round?: number }
   /** 该任务是否有未决派发确认。 */
   pendingDispatch?: boolean
   [key: string]: unknown
@@ -271,6 +275,12 @@ export interface WorkSessionView {
   title?: string
 }
 
+/** One current-turn action shown in the native bubble (additive field). */
+export interface CommanderActivity {
+  text: string
+  at: number
+}
+
 /** `GET /commander/state` snapshot (implementation-plan §8.3 + contract patch §1.6). */
 export interface CommanderSnapshot {
   rev: number
@@ -289,6 +299,8 @@ export interface CommanderSnapshot {
   metrics?: Record<string, number>
   messages?: CommanderMessage[]
   commanderBusy?: boolean
+  /** Additive: current tool description / assistant text for the native bubble. */
+  commanderActivity?: CommanderActivity | null
   /** M4: native shell phase (running means the DSH in-page ball is hidden). */
   nativeShell?: 'disabled' | 'starting' | 'running' | 'failed' | 'stopped'
   /** R1: rotation status (read-only; present even when disabled). */
@@ -430,10 +442,10 @@ export interface TaskDispatchDetailView {
   outcome?: string
   finalTarget?: { workspaceId?: string; mode?: 'new' | 'attach'; sessionId?: string }
   confirmedBy?: string
-  /** M5: round / kind / actual brief / user's original words. */
+  /** M5: round / kind / actual prompt sent to the working session / user's original words. */
   round?: number
   kind?: 'initial' | 'continue'
-  instruction?: string
+  /** 工作会话收到的消息原文（= commander_task_dispatch.prompt，Host 原样投递）。 */
   brief?: string
   userRequest?: { text?: string; at?: number; source?: 'chat' | 'board' }
 }
@@ -483,7 +495,6 @@ export interface TaskDetailView {
   /** M2: recent human board edits (≤20), newest first. */
   boardEdits?: BoardEditView[]
   archivedAt?: number
-  stale?: boolean
   /** 依赖派生视图（detail 复用快照行的同名字段）。 */
   dependsOn?: string[]
   waitingFor?: string[]
@@ -508,10 +519,39 @@ export interface BoardPatchResult {
   rev?: number
 }
 
-/** Response of `GET /commander/archive?limit=&cursor=` (M2 trash). */
+/** Query of `GET /commander/archive` (m2m3-contract-patch §2.5.1). */
+export interface ArchiveQuery {
+  limit?: number
+  cursor?: string | number
+  q?: string
+  status?: 'archived' | 'cancelled'
+  workspaceId?: string
+  /** updatedAt 毫秒，含。 */
+  from?: number
+  /** updatedAt 毫秒，不含。 */
+  to?: number
+}
+
+/** 回收站统计（基于当前全部筛选条件）。 */
+export interface ArchiveSummary {
+  archivedCount: number
+  cancelledCount: number
+  last30dCount: number
+}
+
+/** 回收站月份导航（Host 返回；应用 q/status/workspaceId，忽略 from/to）。 */
+export interface ArchiveMonthCount {
+  key: string
+  count: number
+}
+
+/** Response of `GET /commander/archive?limit=&cursor=&q=&status=&workspaceId=&from=&to=` (M2 trash). */
 export interface ArchiveListResult {
   tasks: TaskView[]
-  nextCursor?: string | number
+  nextCursor?: string | number | null
+  total?: number
+  summary?: ArchiveSummary
+  months?: ArchiveMonthCount[]
 }
 
 /** Result of `POST /commander/jev/test` (M1 connectivity probe, never carries the key). */
@@ -572,7 +612,7 @@ export interface UiConfig {
 /** Partial `PUT /commander/config` request body. */
 export interface ConfigPatch {
   requestId?: string
-  commander?: { model?: CommanderModel; agentPreset?: string; rotation?: RotationPatch }
+  commander?: { model?: CommanderModel; agentPreset?: string; allowCommanderAccept?: boolean; rotation?: RotationPatch }
   jev?: JevConfig
   ui?: UiConfig
 }
@@ -585,6 +625,8 @@ export interface ConfigView {
     sessionId?: string
     workspaceId?: string
     workspacePath?: string
+    /** 是否允许指挥官验收有下游的任务；缺省开。 */
+    allowCommanderAccept?: boolean
     rotation?: RotationConfigView
   }
   jev?: JevConfig
@@ -597,6 +639,8 @@ export interface RotationPatch {
   enabled?: boolean
   periodDays?: number
   includeUserTail?: boolean
+  /** 换代后给新会话预置 dsh-trace-inspect 工具审计（默认 true）。 */
+  toolAudit?: boolean
 }
 
 /** R1: read-only rotation config view. */
@@ -604,6 +648,7 @@ export interface RotationConfigView {
   enabled?: boolean
   periodDays?: number
   includeUserTail?: boolean
+  toolAudit?: boolean
   generation?: number
   generationStartedAt?: number
 }

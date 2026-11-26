@@ -156,30 +156,36 @@ test('commander_workspace_list reports an empty enabled set without failing', as
 test('commander_task_list hides recycle bin by default and exposes pagination + counts', async (t) => {
   const tasks = [
     makeTask({ id: 'draft-1', createdAt: 1_000 }),
+    // 长静默 running（lastActivityAt 远早于 now）：2026-11-24 前会被派生为 stale=true。
+    makeTask({ id: 'running-1', status: 'running', createdAt: 2_000, lastActivityAt: 1_000 }),
     makeTask({ id: 'review-1', status: 'review', createdAt: 3_000 }),
     makeTask({ id: 'archived-1', status: 'archived', createdAt: 9_000 }),
   ]
   const { specs, commanderExec, realTools } = await setup({ tasks })
   const spec = specs.commander_task_list
   const result = await spec.execute({}, commanderExec)
-  assert.equal(result.total, 2)
+  assert.equal(result.total, 3)
   assert.equal(result.counts.archived ?? 0, 0)
   assert.equal(result.columns.proposed, 1)
+  assert.equal(result.columns.running, 1)
   assert.equal(result.columns.review, 1)
-  assert.equal(result.returned, 2)
+  assert.equal(result.returned, 3)
   assert.equal(result.hasMore, false)
   assert.ok(!('nextOffset' in result))
   assert.equal(result.now, '2026-11-23 21:34')
-  assert.deepEqual(result.tasks.map((task: { id: string }) => task.id), ['review-1', 'draft-1'])
+  assert.deepEqual(result.tasks.map((task: { id: string }) => task.id), ['review-1', 'running-1', 'draft-1'])
   assert.equal(result.tasks[0].workspaceName, 'Alpha')
   assert.equal(result.tasks[0].column, 'review')
+  // 任务行不再含 stale 字段（长静默 running 也不显示标记）。
+  assert.ok(result.tasks.every((row: Record<string, unknown>) => !('stale' in row)))
   if (realTools !== null) realTools.validateJsonSchemaValue(spec.output.schema, result, 'value')
   else t.diagnostic('real dsh-tools unavailable; schema shape asserted by compile-time type only')
   const text = renderText(spec, result)
-  assert.match(text, /Board: total=2/)
+  assert.match(text, /Board: total=3/)
   assert.match(text, /nextOffset=null/)
   assert.match(text, /tasks: \[/)
   assert.match(text, /"id":"review-1"/)
+  assert.doesNotMatch(text, /"stale"/)
 })
 
 test('commander_task_list includeArchived adds trash to scope, counts and columns', async (t) => {

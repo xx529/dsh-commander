@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { evaluateGate, needsConfirmationReason } from '../../src/host/dispatch/gate.ts'
 import { createDecisionStore } from '../../src/host/dispatch/decisions.ts'
 import { buildDispatchCandidates, findTargetConflict, resolveWorkspaceReference, type WorkspaceDirectoryEntry } from '../../src/host/dispatch/candidates.ts'
-import { buildDispatchBrief } from '../../src/host/dispatch/brief.ts'
 import { canTransition } from '../../src/host/schema.ts'
 
 const scores = { pWorkspace: 0.9, pSession: 0.9, pMax: 0.9, concentration: 0.8 }
@@ -81,26 +80,6 @@ test('findTargetConflict validates attach session ownership/existence', () => {
   assert.equal(findTargetConflict(context, { workspaceId: 'ws-a', sessionId: 's-1', mode: 'attach' }), null)
   assert.match(findTargetConflict(context, { workspaceId: 'ws-b', sessionId: 's-1', mode: 'attach' })?.message ?? '', /belongs to 'ws-a'/)
   assert.match(findTargetConflict(context, { workspaceId: 'ws-a', sessionId: 'missing', mode: 'attach' })?.message ?? '', /not an attachable/)
-})
-
-test('buildDispatchBrief contains task/target/acceptance and no internal ids', () => {
-  const brief = buildDispatchBrief({
-    title: 'T', goal: 'G',
-    acceptance: [
-      { id: 'a1', text: 'A1', source: 'commander', state: 'insufficient' },
-      { id: 'a2', text: 'A2', source: 'commander', state: 'insufficient' },
-      { id: 'a3', text: 'A3', source: 'commander', state: 'insufficient' },
-      { id: 'a4', text: 'A4', source: 'commander', state: 'insufficient' },
-      { id: 'a5', text: 'A5', source: 'commander', state: 'insufficient' },
-      { id: 'a6', text: 'A6-not-included', source: 'commander', state: 'insufficient' },
-    ],
-  })
-  assert.match(brief, /^任务：T\n目标：G/)
-  assert.match(brief, /验收提示：A1；A2；A3；A4；A5/)
-  assert.equal(brief.includes('A6-not-included'), false)
-  // 工作会话不暴露插件内部的关联 id / marker（关系在 tasks/dispatches/sessions 持久化里）
-  assert.doesNotMatch(brief, /\[commander-dispatch\]/)
-  assert.doesNotMatch(brief, /taskId=|decisionId=|sessionId=/)
 })
 
 test('task state machine allows only declared transitions (done human-only path)', () => {

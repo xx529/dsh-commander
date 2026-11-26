@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
  * 远程页 IPC 探针：启动壳加载一个 loopback 页面，页面检测 window.__TAURI__ 并调用
- * `set_mode({mode:'panel'})`，用 /beacon 回报结果，同时看壳的 window/bounds 帧是否变大。
+ * `set_mode({mode:'panel'})`，用 /beacon 回报结果。
+ *
+ * v0.2（球常驻 + 独立面板窗口）：不再期望球窗口 bounds 变大，而是断言
+ *  - 球窗口（role=ball）与面板窗口（panel=1&role=panel）各请求一次窗口页；
+ *  - 球窗口的 window/bounds 在所有模式切换中都保持 56×56 且位置不变；
+ *  - invoke('panel'/'board'/'panel'/'ball') 全部成功。
  *
  * 用法：node tools/dev/native-ipc-probe.mjs
  * 退出码：0 = IPC 可用且窗口切换成功；1 = 失败；2 = 产物缺失。
  */
-import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import http from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -34,7 +39,10 @@ const page = `<!doctype html><html><head><meta charset="utf-8"></head><body>
         invoke('board', 'board');
         setTimeout(() => {
           invoke('panel', 'panel2');
-          setTimeout(() => invoke('ball', 'collapsed'), 900);
+          setTimeout(() => {
+            fetch('/beacon?shot=ready').catch(() => {});
+            setTimeout(() => invoke('ball', 'collapsed'), 1_500);
+          }, 800);
         }, 900);
       }, 900);
     }, 900);
@@ -44,7 +52,19 @@ const page = `<!doctype html><html><head><meta charset="utf-8"></head><body>
 </script></body></html>`
 
 const stateDir = mkdtempSync(join(tmpdir(), 'dshc-ipc-'))
+const shotPath = join(root, '..', '..', 'tests', 'artifacts', 'm4', 'ipc-panel-plus-ball.png')
+let shotTaken = false
+function takeShot() {
+  try {
+    mkdirSync(join(root, '..', '..', 'tests', 'artifacts', 'm4'), { recursive: true })
+    execFileSync('screencapture', ['-x', shotPath])
+    console.log(`[ipc] screenshot: ${shotPath}`)
+  } catch (error) {
+    console.log(`[ipc] screenshot skipped: ${String(error)}`)
+  }
+}
 const beacons = []
+const windowUrls = []
 let bounds = []
 let child
 let finished = false
@@ -57,6 +77,7 @@ function finish(code, reason) {
   rmSync(stateDir, { recursive: true, force: true })
   console.log(`[ipc] ${code === 0 ? 'PASS' : 'FAIL'}: ${reason}`)
   console.log(`[ipc] beacons: ${beacons.join(' | ') || '(none)'}`)
+  console.log(`[ipc] window urls: ${windowUrls.join(' | ') || '(none)'}`)
   console.log(`[ipc] bounds: ${bounds.map((b) => `${b.x},${b.y} ${b.width}x${b.height}`).join(', ') || '(none)'}`)
   process.exit(code)
 }
@@ -64,6 +85,7 @@ function finish(code, reason) {
 const server = http.createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
   if (url.pathname === '/commander/window') {
+    windowUrls.push(request.url ?? '')
     response.setHeader('content-type', 'text/html; charset=utf-8')
     response.end(page)
     return
@@ -104,20 +126,25 @@ server.listen(0, '127.0.0.1', () => {
           const frame = JSON.parse(line)
           if (frame.type === 'hello') child.stdin.write(`${JSON.stringify({ type: 'ping', at: Date.now() })}\n`)
           if (frame.type === 'window/bounds') bounds.push(frame)
+          if (beacons.some((b) => b.includes('shot=ready')) && shotTaken === false) {
+            shotTaken = true
+            setTimeout(takeShot, 500)
+          }
           if (frame.type === 'pong') {
             setTimeout(() => {
               const beacon = (label) => beacons.some((b) => b.includes(`${label}=ok`))
-              const balls = bounds.filter((b) => b.width <= 60)
-              const expanded = bounds.filter((b) => b.width > 60)
-              const firstBall = balls[0]
-              const lastBall = balls[balls.length - 1]
-              const restored = beacon('collapsed') && firstBall !== undefined && lastBall !== undefined
-                && Math.abs(lastBall.x - firstBall.x) <= 1 && Math.abs(lastBall.y - firstBall.y) <= 1
-              if (beacon('invoke') && beacon('board') && beacon('panel2') && expanded.length >= 2 && restored) {
+              const ballPage = windowUrls.some((u) => /[?&]role=ball/.test(u))
+              const panelPage = windowUrls.some((u) => /[?&]panel=1/.test(u) && /[?&]role=panel/.test(u))
+              // 球窗口常驻：所有 bounds 都必须是球的 56×56，且位置不变。
+              const first = bounds[0]
+              const ballStable = first !== undefined && bounds.every((b) =>
+                b.width === first.width && b.height === first.height
+                && Math.abs(b.x - first.x) <= 1 && Math.abs(b.y - first.y) <= 1)
+              if (beacon('invoke') && beacon('board') && beacon('panel2') && beacon('collapsed') && ballPage && panelPage && ballStable) {
                 child.stdin.write(`${JSON.stringify({ type: 'shutdown' })}\n`)
-                setTimeout(() => finish(0, 'panel/board/panel/ball geometry is stable and the ball is restored'), 500)
+                setTimeout(() => finish(0, 'ball stays parked while the panel/board window opens and closes'), 500)
               } else {
-                finish(1, `invoke=${beacon('invoke')} board=${beacon('board')} panel2=${beacon('panel2')} expanded=${expanded.length} restored=${restored}`)
+                finish(1, `invoke=${beacon('invoke')} board=${beacon('board')} panel2=${beacon('panel2')} collapsed=${beacon('collapsed')} ballPage=${ballPage} panelPage=${panelPage} ballStable=${ballStable}`)
               }
             }, 7_000)
           }

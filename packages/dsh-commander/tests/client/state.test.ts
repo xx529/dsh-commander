@@ -59,6 +59,7 @@ test('applySnapshot is authoritative and normalizes rows', () => {
     panel: 'present',
     counts: { draft: 0, running: 2 },
     commanderBusy: true,
+    commanderActivity: { text: '查看目录', at: 5 },
     messages: [
       hostMessage({ messageId: 'b', order: 2, text: 'second' }),
       hostMessage({ messageId: 'a', order: 1, text: 'first', role: 'user' }),
@@ -72,6 +73,7 @@ test('applySnapshot is authoritative and normalizes rows', () => {
   assert.equal(next.commanderStatus, 'bound')
   assert.equal(next.panel, 'present')
   assert.equal(next.busy, true)
+  assert.deepEqual(next.activity, { text: '查看目录', at: 5 })
   assert.deepEqual(next.messages.map(message => message.id), ['a', 'b'])
   assert.deepEqual(next.workspaces.map(row => row.id), ['ws_a', 'ws_b'])
   assert.equal(next.workspaces[0]?.allowed, false)
@@ -130,20 +132,37 @@ test('applyEvent applies commander.status and heartbeat without inventing rows',
   let state = applySnapshot(createInitialState(), snapshot({ rev: 1 }))
   state = applyEvent(state, {
     event: 'commander.status',
-    data: JSON.stringify({ busy: true, lastTurnId: 4, rev: 2, at: 1 }),
+    data: JSON.stringify({ busy: true, lastTurnId: 4, activity: { text: '查看目录', at: 1 }, rev: 2, at: 1 }),
     id: '2',
   })
   assert.equal(state.busy, true)
   assert.equal(state.lastTurnId, 4)
+  assert.deepEqual(state.activity, { text: '查看目录', at: 1 })
   state = applyEvent(state, { event: 'heartbeat', data: JSON.stringify({ t: 1, rev: 5 }), id: '5' })
   assert.equal(state.rev, 5)
   assert.equal(state.messages.length, 0)
   state = applyEvent(state, {
     event: 'commander.status',
-    data: JSON.stringify({ busy: false, lastTurnId: 4, rev: 6, at: 2 }),
+    data: JSON.stringify({ busy: false, lastTurnId: 4, activity: null, rev: 6, at: 2 }),
     id: '6',
   })
   assert.equal(state.busy, false)
+  assert.equal(state.activity, null)
+})
+
+test('commander.status without activity preserves the last value (older Host)', () => {
+  let state = applySnapshot(createInitialState(), snapshot({ rev: 1 }))
+  state = applyEvent(state, {
+    event: 'commander.status',
+    data: JSON.stringify({ busy: true, lastTurnId: 4, activity: { text: '查看目录', at: 1 }, rev: 2 }),
+    id: '2',
+  })
+  state = applyEvent(state, {
+    event: 'commander.status',
+    data: JSON.stringify({ busy: true, lastTurnId: 4, rev: 3 }),
+    id: '3',
+  })
+  assert.deepEqual(state.activity, { text: '查看目录', at: 1 })
 })
 
 test('applyEvent updates binding and workspace counts', () => {

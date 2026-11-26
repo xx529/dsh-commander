@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createStores } from '../../src/host/store/index.ts'
 import { commanderDomainSpec } from '../../src/host/domain.ts'
-import { createDispatchService } from '../../src/host/dispatch/service.ts'
+import { createDispatchService, type DispatchService, type DispatchTaskArgs, type DispatchTaskResult } from '../../src/host/dispatch/service.ts'
 import { VersionConflictError } from '../../src/host/store/base.ts'
 import { defaultWorkspaceRecord, type TaskRecord } from '../../src/host/schema.ts'
 import {
@@ -14,6 +14,13 @@ import {
   createFakeWorkspaceRegistry,
 } from '../fakes/fakes.ts'
 import type { JevCallResult } from '../../src/host/jev/client.ts'
+
+/** 派发消息由指挥官写：默认原文只用于跑通链路；需要验证「原样透传」的用例单独传 prompt。 */
+const WORKER_PROMPT = '工作会话首条消息（测试）：按任务完成并给出证据。'
+const dispatchWith = (service: Pick<DispatchService, 'dispatchTask'>, args: DispatchTaskArgs): Promise<DispatchTaskResult> =>
+  // 首派（无 decisionId）默认补一份原文；确认调用不补，验证「省略 prompt 复用确认卡」的语义。
+  service.dispatchTask(args.decisionId === undefined ? { prompt: WORKER_PROMPT, ...args } : args)
+
 
 const okJev = (): JevCallResult => ({
   ok: true,
@@ -88,7 +95,7 @@ async function setup(options: { status?: TaskRecord['status']; autoDispatch?: bo
 
 test('review 可以续派：needs_confirmation 保持 review，默认原会话，round=N+1', async () => {
   const { stores, service } = await setup()
-  const first = await service.dispatchTask({ taskId: 'task_m5', requestId: 'req_m5_1' })
+  const first = await dispatchWith(service, { taskId: 'task_m5', requestId: 'req_m5_1' })
   assert.equal(first.status, 'needs_confirmation')
   if (first.status !== 'needs_confirmation') return
   assert.equal(first.kind, 'continue')
@@ -100,14 +107,16 @@ test('review 可以续派：needs_confirmation 保持 review，默认原会话�
 
 test('续派确认：round+1、上轮验收归档、brief/userRequest 落库、link round 更新', async () => {
   const { stores, controller, service } = await setup()
-  const first = await service.dispatchTask({
+  // 续派消息全文由指挥官写（Host 不再拼「本轮要求/上一轮结论/上一轮验收项」）。
+  const ROUND2_PROMPT = '第 2 轮：深入第 3 条；上一轮结论是第一轮结论；结论要附证据。'
+  const first = await dispatchWith(service, {
     taskId: 'task_m5',
     requestId: 'req_m5_2',
-    instruction: '深入分析第 3 条',
+    prompt: ROUND2_PROMPT,
     userRequest: '基于第 3 条再深入',
   })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const dispatched = await service.dispatchTask({
+  const dispatched = await dispatchWith(service, {
     taskId: 'task_m5',
     decisionId: first.decisionId,
     confirmTarget: first.recommendation,
@@ -135,21 +144,19 @@ test('续派确认：round+1、上轮验收归档、brief/userRequest 落库、l
   assert.equal(record?.kind, 'continue')
   assert.equal(record?.userRequest?.text, '基于第 3 条再深入')
   assert.equal(record?.userRequest?.source, 'chat')
-  assert.match(record?.brief ?? '', /本轮要求：深入分析第 3 条/)
-  assert.match(record?.brief ?? '', /上一轮结论：第一轮结论/)
-  // 同一会话续派只发增量：不重复目标/上一轮验收整段
-  assert.doesNotMatch(record?.brief ?? '', /目标：/)
-  assert.doesNotMatch(record?.brief ?? '', /上一轮验收项/)
+  assert.equal(record?.brief, ROUND2_PROMPT)
+  // 程序不再追加任何段落（模板已在 2026-11-26 取消）
+  assert.doesNotMatch(record?.brief ?? '', /本轮要求：|上一轮结论：|上一轮验收项|目标：|验收提示：|约束：你是工作会话/)
   const prompt = controller.prompts.at(-1)
   assert.equal(prompt?.sessionId, 's-1')
-  assert.match(String((prompt?.content as Array<{ text: string }>)[0]?.text), /本轮要求：深入分析第 3 条/)
+  assert.equal(String((prompt?.content as Array<{ text: string }>)[0]?.text), ROUND2_PROMPT)
 })
 
 test('续派可换新工作区/新会话，workspaceIds 累积', async () => {
   const { stores, controller, service } = await setup()
-  const first = await service.dispatchTask({ taskId: 'task_m5', requestId: 'req_m5_4' })
+  const first = await dispatchWith(service, { taskId: 'task_m5', requestId: 'req_m5_4' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const dispatched = await service.dispatchTask({
+  const dispatched = await dispatchWith(service, {
     taskId: 'task_m5',
     decisionId: first.decisionId,
     confirmTarget: { workspaceId: 'ws-b', mode: 'new' },
@@ -160,15 +167,15 @@ test('续派可换新工作区/新会话，workspaceIds 累积', async () => {
   assert.equal(task?.workspaceId, 'ws-b')
   assert.deepEqual(task?.workspaceIds, ['ws-a', 'ws-b'])
   assert.equal(task?.primarySessionId, controller.nextSessionId)
-  // 换新会话：brief 需要完整目标/上一轮验收，避免新会话缺少上下文
+  // 换新会话也不补上下文：Host 只投递指挥官给的原文
   const record = stores.dispatches.get(first.decisionId)
-  assert.match(record?.brief ?? '', /目标：/)
-  assert.match(record?.brief ?? '', /上一轮验收项：.*第一轮验收/)
+  assert.equal(record?.brief, WORKER_PROMPT)
+  assert.doesNotMatch(record?.brief ?? '', /目标：|上一轮验收项/)
 })
 
 test('续派复用 autoDispatch：开关打开且门控通过时自动开新一轮', async () => {
   const { stores, service } = await setup({ autoDispatch: true })
-  const first = await service.dispatchTask({ taskId: 'task_m5', requestId: 'req_m5_6' })
+  const first = await dispatchWith(service, { taskId: 'task_m5', requestId: 'req_m5_6' })
   assert.equal(first.status, 'dispatched')
   if (first.status !== 'dispatched') return
   assert.equal(first.round, 2)
@@ -180,11 +187,11 @@ test('续派复用 autoDispatch：开关打开且门控通过时自动开新一�
 
 test('运行中的任务拒绝续派；draft 首派仍然正常', async () => {
   const running = await setup({ status: 'running' })
-  const rejected = await running.service.dispatchTask({ taskId: 'task_m5', requestId: 'req_m5_7' })
+  const rejected = await dispatchWith(running.service, { taskId: 'task_m5', requestId: 'req_m5_7' })
   assert.equal(rejected.status, 'rejected')
   if (rejected.status === 'rejected') assert.equal(rejected.code, 'task_state')
   const draft = await setup({ status: 'draft' })
-  const first = await draft.service.dispatchTask({ taskId: 'task_m5', requestId: 'req_m5_8' })
+  const first = await dispatchWith(draft.service, { taskId: 'task_m5', requestId: 'req_m5_8' })
   assert.equal(first.status, 'needs_confirmation')
   if (first.status === 'needs_confirmation') assert.equal(first.kind, 'initial')
 })
@@ -200,7 +207,7 @@ test('prompt 已发出后 task version 被 turn/start 顶掉：重试写入，�
     }
     return originalUpdate(taskId, mutate, expectedVersion)
   }
-  const result = await service.dispatchTask({ taskId: 'task_m5', requestId: 'req_m5_conflict' })
+  const result = await dispatchWith(service, { taskId: 'task_m5', requestId: 'req_m5_conflict' })
   assert.equal(result.status, 'dispatched')
   const task = stores.tasks.get('task_m5')
   assert.equal(task?.status, 'queued')

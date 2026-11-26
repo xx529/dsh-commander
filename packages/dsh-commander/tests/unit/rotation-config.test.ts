@@ -61,4 +61,19 @@ test('clampPeriodDays / resolveRotation: 1..7 夹紧，旧配置读取归一化'
   assert.equal(parsed.enabled, false)
   assert.equal(parsed.periodDays, 1)
   assert.equal(parsed.generationStartedAt, 2_000)
+  // 旧配置没有 toolAudit 字段：默认开启（插件缺失时换代自动跳过）
+  assert.equal(parsed.toolAudit, true)
+})
+
+test('resolveRotation: toolAudit 显式 false 生效；默认 true', () => {
+  const base = defaultConfigRecord(2_000)
+  const withFalse: ConfigRecord = {
+    ...base,
+    commander: {
+      ...base.commander,
+      rotation: { enabled: true, periodDays: 1, includeUserTail: true, toolAudit: false, generation: 1, generationStartedAt: 2_000 },
+    },
+  }
+  assert.equal(resolveRotation(withFalse).toolAudit, false)
+  assert.equal(resolveRotation(base).toolAudit, true)
 })

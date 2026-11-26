@@ -13,14 +13,40 @@ import type { CommanderStore, CommanderView } from './store'
 import type { ReportMaterialView, TaskAcceptanceView, TaskDetailView, TaskDispatchDetailView, TaskSessionLinkView, TaskView } from './types'
 import {
   BOARD_COLUMNS, BOARD_PRIORITIES, TASK_STAGES, acceptanceSummary, buildBoardPatch, buildTaskRounds, canArchiveTask,
-  canCancelTask, canRestoreTask, formatBoardTime, formatClockTime, groupBoardTasks, hasPendingDispatch, isStaleTask,
-  priorityLabelKey, shouldCollapseSummary, statusLabelKey, taskStage, taskStageBlocked, taskTerminal, trashTasks, waitingFor,
+  BOARD_COLUMN_FR_STORAGE_KEY, BOARD_COLUMN_MIN_PX, DEFAULT_BOARD_COLUMN_FR, canCancelTask, dependencyHighlightChain, downstreamCounts,
+  formatBoardTime, formatClockTime, groupBoardTasks, hasPendingDispatch, normalizeBoardColumnFr,
+  archiveCount, priorityLabelKey, resizeBoardColumnFr, shouldCollapseSummary, statusLabelKey, taskStage, taskStageBlocked, taskTerminal, waitingFor,
 } from './board'
 import type { TaskRoundView } from './board'
 import { candidateProbability, capabilitySummary, capabilityTotal, formatPercent, normalizeProbability } from './dispatch'
 import { STYLES } from './styles'
 import { isUnnamedSession, sessionDisplayTitle, shortSessionId } from './session-display'
 import { AcceptanceMaterialChips, MaterialFileSheet, MaterialLightbox, MaterialsSection, isPreviewableImage, openMaterialLink } from './Materials'
+import { ArchivePane } from './ArchivePane'
+import { DependencyGate, DependencyOverlay } from './BoardDependencies'
+
+/** 读取已保存的列宽；没有/损坏时回到六列等分。 */
+function readStoredColumnFr(): number[] {
+  try {
+    if (typeof window === 'undefined' || window.localStorage === null) return [...DEFAULT_BOARD_COLUMN_FR]
+    const raw = window.localStorage.getItem(BOARD_COLUMN_FR_STORAGE_KEY)
+    if (raw === null) return [...DEFAULT_BOARD_COLUMN_FR]
+    return normalizeBoardColumnFr(JSON.parse(raw)) ?? [...DEFAULT_BOARD_COLUMN_FR]
+  } catch {
+    return [...DEFAULT_BOARD_COLUMN_FR]
+  }
+}
+
+/** 列宽只影响界面偏好，失败静默。 */
+function storeColumnFr(fr: readonly number[]): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage !== null) {
+      window.localStorage.setItem(BOARD_COLUMN_FR_STORAGE_KEY, JSON.stringify(fr))
+    }
+  } catch {
+    /* localStorage 不可用时仅本次会话生效 */
+  }
+}
 
 /** Locale translate function handed in through the slot inject face. */
 export type Translate = (key: string, vars?: Record<string, string | number>) => string
@@ -47,12 +73,6 @@ export interface BoardInjected {
 /** Props received by the slot entry. */
 export type BoardPageProps = BoardInjected
 
-/** One toast the page shows for board command results. */
-interface BoardToast {
-  kind: 'ok' | 'error'
-  text: string
-}
-
 /** Drawer load state for one task. */
 type DrawerState =
   | { phase: 'loading'; taskId: string }
@@ -60,47 +80,75 @@ type DrawerState =
   | { phase: 'error'; taskId: string; message: string }
 
 /** Render the full board page. */
-export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps): ReactNode {
+export function BoardPage({ store, t, openSession }: BoardPageProps): ReactNode {
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot)
   const [tab, setTab] = React.useState<'board' | 'trash'>('board')
   const [drawer, setDrawer] = React.useState<DrawerState | null>(null)
-  const [toast, setToast] = React.useState<BoardToast | null>(null)
-  const [trash, setTrash] = React.useState<{ phase: 'idle' | 'loading' | 'ready' | 'error' | 'missing'; tasks: TaskView[]; message?: string }>({
-    phase: 'idle', tasks: [],
-  })
-  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-
-  const showToast = React.useCallback((next: BoardToast): void => {
-    setToast(next)
-    if (toastTimer.current !== undefined) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => { setToast(null) }, 2_600)
-  }, [])
-  React.useEffect(() => () => { if (toastTimer.current !== undefined) clearTimeout(toastTimer.current) }, [])
+  const [columnFr, setColumnFr] = React.useState<number[]>(() => readStoredColumnFr())
+  const columnFrRef = React.useRef<number[]>(columnFr)
+  columnFrRef.current = columnFr
+  const [resizingColumns, setResizingColumns] = React.useState(false)
+  const [hoveredTaskId, setHoveredTaskId] = React.useState<string | null>(null)
+  const [expandedDeps, setExpandedDeps] = React.useState<ReadonlySet<string>>(new Set())
+  const boardWrapRef = React.useRef<HTMLDivElement | null>(null)
 
   const pendingTaskIds = state.pendingDispatch?.taskId === undefined ? [] : [state.pendingDispatch.taskId]
   const grouped = groupBoardTasks(state.tasks, pendingTaskIds)
-  const now = Date.now()
   const workspaceName = (workspaceId: string | undefined): string => workspaceNameOf(state, workspaceId)
-  /** 依赖 id → 任务标题（看板卡片「等待 A 验收」）；查不到时退回 id。 */
-  const dependencyTitles = (ids: readonly string[]): string => ids
-    .map(id => state.tasks.find(row => row.id === id)?.title ?? id)
-    .join('、')
-
-  const loadTrash = React.useCallback((): void => {
-    setTrash(current => ({ ...current, phase: 'loading' }))
-    void store.loadArchive().then(result => {
-      if (result.ok) {
-        setTrash({ phase: 'ready', tasks: result.data.tasks })
-        return
-      }
-      const missing = result.failure.code === 'not_found' || result.failure.code === 'route_missing'
-      setTrash({ phase: missing ? 'missing' : 'error', tasks: [], message: result.failure.message })
+  const taskById = React.useMemo(() => new Map(state.tasks.map(task => [task.id, task])), [state.tasks])
+  const downstream = React.useMemo(() => downstreamCounts(state.tasks), [state.tasks])
+  // 悬停优先；打开详情抽屉时把该任务的链固定在高亮状态（看板始终开着，抽屉关闭即恢复）。
+  const activeTaskId = hoveredTaskId ?? drawer?.taskId ?? null
+  const activeChain = React.useMemo(
+    () => (activeTaskId === null ? null : dependencyHighlightChain(state.tasks, activeTaskId)),
+    [activeTaskId, state.tasks],
+  )
+  // 切到回收站时清掉悬停态，避免回到看板时残留一条旧链。
+  React.useEffect(() => { setHoveredTaskId(null) }, [tab])
+  const toggleDeps = React.useCallback((taskId: string): void => {
+    setExpandedDeps(current => {
+      const next = new Set(current)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
     })
-  }, [store])
+  }, [])
 
-  React.useEffect(() => {
-    if (tab === 'trash' && trash.phase === 'idle') loadTrash()
-  }, [tab, trash.phase, loadTrash])
+  const beginColumnResize = (event: React.PointerEvent<HTMLSpanElement>, index: number): void => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    const grid = boardWrapRef.current?.querySelector<HTMLElement>('.dshc-board-columns')
+    if (grid === null || grid === undefined) return
+    const widths = [...grid.querySelectorAll<HTMLElement>('.dshc-board-column')].map(element => element.getBoundingClientRect().width)
+    const available = widths.reduce((sum, width) => sum + width, 0)
+    if (widths.length !== DEFAULT_BOARD_COLUMN_FR.length || available <= 0) return
+    const startX = event.clientX
+    const startFr = [...columnFrRef.current]
+    setResizingColumns(true)
+    const onMove = (moveEvent: PointerEvent): void => {
+      const next = resizeBoardColumnFr(startFr, index, moveEvent.clientX - startX, available)
+      columnFrRef.current = next
+      setColumnFr(next)
+    }
+    const finish = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      setResizingColumns(false)
+      storeColumnFr(columnFrRef.current)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', finish)
+    window.addEventListener('pointercancel', finish)
+  }
+
+  const resetColumnWidths = (): void => {
+    const next = [...DEFAULT_BOARD_COLUMN_FR]
+    columnFrRef.current = next
+    setColumnFr(next)
+    storeColumnFr(next)
+  }
 
   const openDrawer = (taskId: string): void => {
     setDrawer({ phase: 'loading', taskId })
@@ -121,68 +169,36 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
 
   const archiveTask = (task: TaskView): void => {
     void store.archiveTask(task.id).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.archived') })
-        if (drawer !== null && drawer.taskId === task.id) setDrawer(null)
-        if (trash.phase !== 'idle') loadTrash()
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
+      if (result.ok && drawer !== null && drawer.taskId === task.id) setDrawer(null)
     })
   }
 
   const cancelTask = (task: TaskView): void => {
     void store.cancelTask(task.id).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.cancelled') })
-        if (drawer !== null && drawer.taskId === task.id) setDrawer(null)
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
+      if (result.ok && drawer !== null && drawer.taskId === task.id) setDrawer(null)
     })
   }
 
-  const restoreTask = (task: TaskView): void => {
-    void store.restoreTask(task.id).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.restored') })
-        loadTrash()
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
-    })
+  const restoreTask = async (task: TaskView): Promise<boolean> => {
+    const result = await store.restoreTask(task.id)
+    return result.ok
   }
 
   const changePriority = (task: TaskView, priority: string): void => {
     void store.patchBoardTask(task.id, buildBoardPatch('priority', priority)).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.synced') })
-        refreshDrawer(task.id)
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
+      if (result.ok) refreshDrawer(task.id)
     })
   }
 
-  const acceptTask = (task: TaskView): void => {
-    void store.acceptTask(task.id).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.accepted') })
-        refreshDrawer(task.id)
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
+  const acceptTask = (task: TaskView, note?: string): void => {
+    void store.acceptTask(task.id, note).then(result => {
+      if (result.ok) refreshDrawer(task.id)
     })
   }
 
   const reworkTask = (task: TaskView, comment: string): void => {
     void store.reworkTask(task.id, comment).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.reworked') })
-        refreshDrawer(task.id)
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
+      if (result.ok) refreshDrawer(task.id)
     })
   }
 
@@ -190,12 +206,7 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
     const value = title.trim()
     if (value === '' || value === task.title) return
     void store.patchBoardTask(task.id, buildBoardPatch('title', value.slice(0, 200))).then(result => {
-      if (result.ok) {
-        showToast({ kind: 'ok', text: t('board.toast.synced') })
-        refreshDrawer(task.id)
-        return
-      }
-      showToast({ kind: 'error', text: result.failure.message })
+      if (result.ok) refreshDrawer(task.id)
     })
   }
 
@@ -212,15 +223,11 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
   }, [drawer, drawerSnapshotTask?.updatedAt])
 
   return (
-    <div className="dshc-board dshc-root">
+    <div className="dshc-board dshc-root" aria-label={t('board.title')}>
       <style>{STYLES}</style>
 
       <header className="dshc-board-header">
-        <div className="dshc-board-heading">
-          <h1 className="dshc-board-title">{t('board.title')}</h1>
-          <span className="dshc-board-subtitle">{t('board.subtitle')}</span>
-        </div>
-        <div className="dshc-board-tabs" role="tablist">
+        <div className="dshc-board-tabs" role="tablist" aria-label={t('board.title')}>
           <button
             type="button"
             role="tab"
@@ -230,6 +237,7 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
             onClick={() => { setTab('board') }}
           >
             {t('board.tab.board')}
+            <span className="dshc-board-tab-count">{BOARD_COLUMNS.reduce((sum, column) => sum + grouped[column.id].length, 0)}</span>
           </button>
           <button
             type="button"
@@ -239,23 +247,20 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
             data-active={tab === 'trash' ? 'true' : 'false'}
             onClick={() => { setTab('trash') }}
           >
-            {`${t('board.tab.trash')}${trashCount(state) === 0 ? '' : ` ${String(trashCount(state))}`}`}
-          </button>
-        </div>
-        <div className="dshc-board-actions">
-          <button type="button" className="dshc-button" data-variant="secondary" onClick={() => { closeBoard() }}>
-            {t('board.back')}
+            {t('board.tab.trash')}
+            <span className="dshc-board-tab-count">{trashCount(state)}</span>
           </button>
         </div>
       </header>
 
-      {toast === null ? null : (
-        <div className="dshc-board-toast" data-kind={toast.kind} role="status">{toast.text}</div>
-      )}
-
       {tab === 'board' ? (
-        <div className="dshc-board-columns">
-          {BOARD_COLUMNS.map(column => (
+        <div className="dshc-board-columns-wrap" ref={boardWrapRef}>
+          <div
+            className="dshc-board-columns"
+            data-resizing={resizingColumns ? 'true' : 'false'}
+            style={{ gridTemplateColumns: columnFr.map(fr => `minmax(${String(BOARD_COLUMN_MIN_PX)}px, ${String(fr)}fr)`).join(' ') }}
+          >
+          {BOARD_COLUMNS.map((column, columnIndex) => (
             <section key={column.id} className="dshc-board-column">
               <header className="dshc-board-column-head">
                 <span className="dshc-board-column-title">{t(column.labelKey)}</span>
@@ -265,34 +270,52 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
                 {grouped[column.id].length === 0 ? (
                   <div className="dshc-board-column-empty">{t('board.column.empty')}</div>
                 ) : null}
-                {grouped[column.id].map(task => (
+                {grouped[column.id].map(task => {
+                  const inChain = activeChain !== null && activeChain.has(task.id)
+                  return (
                   <article
                     key={task.id}
                     className="dshc-board-card"
+                    data-task-id={task.id}
                     data-status={task.status ?? ''}
                     data-pending-dispatch={hasPendingDispatch(task, pendingTaskIds) ? 'true' : 'false'}
+                    data-dep-dim={activeChain !== null && !inChain ? 'true' : 'false'}
+                    data-dep-chain={inChain ? 'true' : 'false'}
+                    data-dep-active={activeChain !== null && activeTaskId === task.id ? 'true' : 'false'}
                     tabIndex={0}
                     role="button"
                     aria-label={task.title ?? task.id}
                     onClick={() => { openDrawer(task.id) }}
+                    onMouseEnter={() => { setHoveredTaskId(task.id) }}
+                    onMouseLeave={() => { setHoveredTaskId(current => (current === task.id ? null : current)) }}
+                    onFocus={() => { setHoveredTaskId(task.id) }}
+                    onBlur={event => {
+                      const next = event.relatedTarget
+                      if (next instanceof Node && event.currentTarget.contains(next)) return
+                      setHoveredTaskId(current => (current === task.id ? null : current))
+                    }}
                     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDrawer(task.id) } }}
                   >
                     <div className="dshc-board-card-head">
                       <span className="dshc-board-card-title">{task.title ?? task.id}</span>
-                      {isStaleTask(task, now) ? <span className="dshc-board-stale" title={t('board.card.stale')}>{t('board.card.staleBadge')}</span> : null}
                     </div>
                     <div className="dshc-board-card-meta">
                       <span className="dshc-board-card-workspace">{workspaceName(task.workspaceId)}</span>
                       <span className="dshc-board-round" data-current={(task.round ?? 1) > 1 ? 'true' : 'false'}>{t('board.round.badge', { round: task.round ?? 1 })}</span>
                       <span className="dshc-board-priority" data-priority={task.priority ?? 'normal'}>{t(priorityLabelKey(task.priority))}</span>
+                      {(downstream.get(task.id) ?? 0) > 0 ? <span className="dshc-board-downstream">{t('board.card.downstream', { n: downstream.get(task.id) ?? 0 })}</span> : null}
                     </div>
+                    <DependencyGate
+                      task={task}
+                      taskById={taskById}
+                      t={t}
+                      expanded={expandedDeps.has(task.id)}
+                      onToggle={() => { toggleDeps(task.id) }}
+                    />
                     {(() => {
-                      const waiting = waitingFor(task)
                       const pending = hasPendingDispatch(task, pendingTaskIds)
                       const badges: ReactNode[] = []
                       if (pending) badges.push(<span key="pending" className="dshc-board-badge" data-tone="pending">{t('board.card.pendingConfirm')}</span>)
-                      if (waiting.length > 0) badges.push(<span key="waiting" className="dshc-board-badge" data-tone="waiting">{t('board.card.waitingFor', { tasks: dependencyTitles(waiting) })}</span>)
-                      else if ((task.dependsOn ?? []).length > 0 && task.ready === true) badges.push(<span key="ready" className="dshc-board-badge" data-tone="ready">{t('board.card.dependencyReady')}</span>)
                       if (task.pendingContinue === true) badges.push(<span key="continue" className="dshc-board-badge" data-tone="continue">{t('board.card.continueDispatch')}</span>)
                       return badges.length === 0 ? null : <div className="dshc-board-card-badges">{badges}</div>
                     })()}
@@ -344,18 +367,38 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
                       ) : null}
                     </div>
                   </article>
-                ))}
+                  )
+                })}
               </div>
+              {columnIndex < BOARD_COLUMNS.length - 1 ? (
+                <span
+                  className="dshc-board-resizer"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={t('board.columns.resize')}
+                  title={t('board.columns.resize')}
+                  onPointerDown={event => { beginColumnResize(event, columnIndex) }}
+                  onDoubleClick={event => { event.preventDefault(); resetColumnWidths() }}
+                />
+              ) : null}
             </section>
           ))}
+          </div>
+          <DependencyOverlay
+            tasks={state.tasks}
+            activeTaskId={activeChain === null ? null : activeTaskId}
+            wrapRef={boardWrapRef}
+            layoutKey={`${columnFr.join(',')}:${[...expandedDeps].sort().join(',')}:${String(state.rev)}`}
+          />
         </div>
       ) : (
-        <TrashPane
+        <ArchivePane
+          store={store}
           t={t}
-          trash={trash}
-          onRestore={restoreTask}
-          onRetry={loadTrash}
+          workspaces={state.workspaces.map(workspace => ({ id: workspace.id }))}
           workspaceName={workspaceName}
+          allTotal={trashCount(state)}
+          onRestore={restoreTask}
         />
       )}
 
@@ -375,46 +418,6 @@ export function BoardPage({ store, t, closeBoard, openSession }: BoardPageProps)
           onRework={reworkTask}
         />
       )}
-    </div>
-  )
-}
-
-/** Trash tab body. */
-function TrashPane({
-  t, trash, onRestore, onRetry, workspaceName,
-}: {
-  t: Translate
-  trash: { phase: 'idle' | 'loading' | 'ready' | 'error' | 'missing'; tasks: TaskView[]; message?: string }
-  onRestore: (task: TaskView) => void
-  onRetry: () => void
-  workspaceName: (workspaceId: string | undefined) => string
-}): ReactNode {
-  if (trash.phase === 'loading' || trash.phase === 'idle') return <div className="dshc-board-state">{t('board.loading')}</div>
-  if (trash.phase === 'missing') return <div className="dshc-board-state">{t('board.trash.unavailable')}</div>
-  if (trash.phase === 'error') {
-    return (
-      <div className="dshc-board-state">
-        {`${t('board.error.load')}：${trash.message ?? ''}`}
-        <button type="button" className="dshc-msg-toggle" onClick={onRetry}>{t('board.retry')}</button>
-      </div>
-    )
-  }
-  if (trash.tasks.length === 0) return <div className="dshc-board-state">{t('board.trash.empty')}</div>
-  return (
-    <div className="dshc-board-trash">
-      {trash.tasks.map(task => (
-        <div className="dshc-board-trash-row" key={task.id}>
-          <span className="dshc-board-trash-title">{task.title ?? task.id}</span>
-          <span className="dshc-board-card-workspace">{workspaceName(task.workspaceId)}</span>
-          <span className="dshc-board-card-status">{t(statusLabelKey(task.status))}</span>
-          <span className="dshc-board-trash-time">{formatBoardTime(task.updatedAt)}</span>
-          {canRestoreTask(task) ? (
-            <button type="button" className="dshc-button" data-variant="secondary" onClick={() => { onRestore(task) }}>
-              {t('board.action.restore')}
-            </button>
-          ) : null}
-        </div>
-      ))}
     </div>
   )
 }
@@ -445,7 +448,6 @@ function dispatchOutcomeKey(outcome: string | undefined): string {
   return key ?? 'board.drawer.outcome.other'
 }
 
-/** Right-side task detail drawer (scheme D: one chronological story, review at the bottom). */
 const EDIT_FIELD_KEYS: Readonly<Record<string, string>> = {
   status: 'board.field.status',
   priority: 'board.field.priority',
@@ -758,10 +760,11 @@ function TaskDrawer({
   onCancel: (task: TaskView) => void
   onPriority: (task: TaskView, priority: string) => void
   onTitle: (task: TaskView, title: string) => void
-  onAccept: (task: TaskView) => void
+  onAccept: (task: TaskView, note?: string) => void
   onRework: (task: TaskView, comment: string) => void
 }): ReactNode {
   const [confirmAccept, setConfirmAccept] = React.useState(false)
+  const [acceptNote, setAcceptNote] = React.useState('')
   const [showRework, setShowRework] = React.useState(false)
   const [reworkComment, setReworkComment] = React.useState('')
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -773,6 +776,7 @@ function TaskDrawer({
 
   React.useEffect(() => {
     setConfirmAccept(false)
+    setAcceptNote('')
     setShowRework(false)
     setReworkComment('')
     setMenuOpen(false)
@@ -1060,10 +1064,19 @@ function TaskDrawer({
             {detail.pendingInstruction?.text === undefined ? null : (
               <PendingContinueCard text={detail.pendingInstruction.text} at={detail.pendingInstruction.at} t={t} />
             )}
+            {task.acceptNote?.text === undefined || task.acceptNote.text === '' ? null : (
+              <div className="dshc-d-accept-note">
+                <div className="dshc-d-accept-note-head">
+                  <b>{t('board.drawer.acceptNote')}</b>
+                  {task.acceptedBy === 'commander' ? <em>{t('board.drawer.acceptedByCommander')}</em> : null}
+                </div>
+                <p>{task.acceptNote.text}</p>
+              </div>
+            )}
             <div className="dshc-d-now" aria-current="step">
               <span className="dshc-d-now-dot" aria-hidden />
               <div className="dshc-d-now-main">
-                <strong>{`${t('board.drawer.now')} · ${t(statusLabelKey(task.status))}`}</strong>
+                <strong>{`${t('board.drawer.now')} · ${t(statusLabelKey(task.status))}`}{task.acceptedBy === 'commander' ? ` · ${t('board.drawer.acceptedByCommander')}` : ''}</strong>
                 <p>{nowHint}</p>
               </div>
             </div>
@@ -1106,18 +1119,36 @@ function TaskDrawer({
                 {confirmAccept ? (
                   <div className="dshc-d-confirm">
                     <span>{t('board.accept.confirm')}</span>
-                    <button
-                      type="button"
-                      className="dshc-button"
-                      data-variant="primary"
-                      data-size="sm"
-                      onClick={() => { setConfirmAccept(false); onAccept(task) }}
-                    >
-                      {t('board.accept.ok')}
-                    </button>
-                    <button type="button" className="dshc-button" data-variant="ghost" data-size="sm" onClick={() => { setConfirmAccept(false) }}>
-                      {t('board.accept.cancel')}
-                    </button>
+                    {task.hasPendingDependents === true ? (
+                      <textarea
+                        className="dshc-field-textarea"
+                        value={acceptNote}
+                        maxLength={1000}
+                        placeholder={t('board.accept.notePlaceholder')}
+                        aria-label={t('board.accept.notePlaceholder')}
+                        onChange={event => { setAcceptNote(event.target.value) }}
+                      />
+                    ) : null}
+                    <div className="dshc-d-confirm-actions">
+                      <button
+                        type="button"
+                        className="dshc-button"
+                        data-variant="primary"
+                        data-size="sm"
+                        onClick={() => { setConfirmAccept(false); onAccept(task, acceptNote.trim() === '' ? undefined : acceptNote) }}
+                      >
+                        {t('board.accept.ok')}
+                      </button>
+                      <button
+                        type="button"
+                        className="dshc-button"
+                        data-variant="ghost"
+                        data-size="sm"
+                        onClick={() => { setConfirmAccept(false); setAcceptNote('') }}
+                      >
+                        {t('board.accept.cancel')}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
                 <div className="dshc-d-foot-main">
@@ -1363,7 +1394,7 @@ function workspaceNameOf(state: CommanderView, workspaceId: string | undefined):
 }
 
 function trashCount(state: CommanderView): number {
-  return (state.counts.archived ?? 0) + (state.counts.cancelled ?? 0) + trashTasks(state.tasks).length
+  return archiveCount(state)
 }
 
 /**

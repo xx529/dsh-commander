@@ -112,6 +112,7 @@ test('snapshot contains M0 fields (binding/commanderStatus/panel/counts/tasks/wo
   assert.equal(body.commanderStatus, 'unbound')
   assert.equal(body.panel, 'absent')
   assert.equal(body.commanderBusy, false)
+  assert.equal(body.commanderActivity, null)
   assert.deepEqual(body.messages, [])
   assert.deepEqual(body.pendingDispatch, null)
   assert.deepEqual(body.tasks, [])
@@ -348,32 +349,73 @@ test('session/event subscription: assistant text → message ring; turn events �
   const host = await createHost()
   await invoke(host, 'POST', '/commander/binding', { mode: 'new', workspaceId: 'htdot-project', requestId: 'req_bind_evt_1' })
   host.ctx.emit('session/event', { id: host.sessionId }, { seq: 10, type: 'turn/start', time: 100, data: { turn: 3 } })
+  // 气泡活动：tool/call 参数里的 description 优先展示。
+  host.ctx.emit('session/event', { id: host.sessionId }, {
+    seq: 11,
+    type: 'tool/call',
+    time: 150,
+    data: { turn: 3, callId: 'call_1', name: 'bash', arguments: '{"description":"查看当前目录","command":"ls"}' },
+  })
+  let state = await invoke(host, 'GET', '/commander/state')
+  let body = state.body as { messages: unknown[]; commanderBusy: boolean; commanderActivity: { text: string } | null }
+  assert.equal(body.commanderBusy, true)
+  assert.deepEqual(body.messages, [])
+  assert.deepEqual(body.commanderActivity, { text: '查看当前目录', at: 150 })
+  // 没有 description 的工具调用：跳过，保留上一条活动。
   host.ctx.emit('session/event', { id: host.sessionId }, {
     seq: 12,
+    type: 'tool/call',
+    time: 160,
+    data: { turn: 3, callId: 'call_2', name: 'bash', arguments: '{"command":"pwd"}' },
+  })
+  state = await invoke(host, 'GET', '/commander/state')
+  assert.deepEqual((state.body as { commanderActivity: { text: string } | null }).commanderActivity, { text: '查看当前目录', at: 150 })
+  // 工具调用之间的 assistant 文本也进入活动。
+  host.ctx.emit('session/event', { id: host.sessionId }, {
+    seq: 13,
     type: 'assistant/message',
     time: 200,
     data: { turn: 3, message: { content: [{ type: 'text', text: 'm0-ok' }] } },
   })
-  let state = await invoke(host, 'GET', '/commander/state')
-  let body = state.body as { messages: Array<{ messageId: string; role: string; text: string; turnId?: number; seq?: number }>; commanderBusy: boolean }
+  state = await invoke(host, 'GET', '/commander/state')
+  body = state.body as typeof body
   assert.equal(body.commanderBusy, true)
   assert.equal(body.messages.length, 1)
-  assert.equal(body.messages[0]?.messageId, 'asst_3_12')
-  assert.equal(body.messages[0]?.role, 'assistant')
-  assert.equal(body.messages[0]?.text, 'm0-ok')
-  assert.equal(body.messages[0]?.turnId, 3)
+  assert.deepEqual(body.commanderActivity, { text: 'm0-ok', at: 200 })
+  const messages = body.messages as Array<{ messageId: string; role: string; text: string; turnId?: number; seq?: number }>
+  assert.equal(messages[0]?.messageId, 'asst_3_13')
+  assert.equal(messages[0]?.role, 'assistant')
+  assert.equal(messages[0]?.text, 'm0-ok')
+  assert.equal(messages[0]?.turnId, 3)
   // 同一事件重复投递：去重
-  host.ctx.emit('session/event', { id: host.sessionId }, { seq: 12, type: 'assistant/message', time: 200, data: { turn: 3, message: { content: [{ type: 'text', text: 'm0-ok' }] } } })
-  state = await invoke(host, 'GET', '/commander/state')
-  body = state.body as { messages: unknown[] }
-  assert.equal(body.messages.length, 1)
-  host.ctx.emit('session/event', { id: host.sessionId }, { seq: 13, type: 'turn/end', time: 300, data: { turn: 3, reason: { kind: 'completed' } } })
-  state = await invoke(host, 'GET', '/commander/state')
-  assert.equal((state.body as { commanderBusy: boolean }).commanderBusy, false)
-  // 非绑定会话的事件不进入消息环
-  host.ctx.emit('session/event', { id: 'other-session' }, { seq: 14, type: 'assistant/message', data: { turn: 9, message: { content: [{ type: 'text', text: 'nope' }] } } })
+  host.ctx.emit('session/event', { id: host.sessionId }, { seq: 13, type: 'assistant/message', time: 200, data: { turn: 3, message: { content: [{ type: 'text', text: 'm0-ok' }] } } })
   state = await invoke(host, 'GET', '/commander/state')
   assert.equal((state.body as { messages: unknown[] }).messages.length, 1)
+  host.ctx.emit('session/event', { id: host.sessionId }, { seq: 14, type: 'turn/end', time: 300, data: { turn: 3, reason: { kind: 'completed' } } })
+  state = await invoke(host, 'GET', '/commander/state')
+  assert.equal((state.body as { commanderBusy: boolean }).commanderBusy, false)
+  assert.equal((state.body as { commanderActivity: unknown }).commanderActivity, null)
+  // 非绑定会话的事件不进入消息环
+  host.ctx.emit('session/event', { id: 'other-session' }, { seq: 15, type: 'assistant/message', data: { turn: 9, message: { content: [{ type: 'text', text: 'nope' }] } } })
+  state = await invoke(host, 'GET', '/commander/state')
+  assert.equal((state.body as { messages: unknown[] }).messages.length, 1)
+  disposeAll(host.ctx)
+})
+
+test('commander.status SSE carries tool description activity', async () => {
+  const host = await createHost()
+  await invoke(host, 'POST', '/commander/binding', { mode: 'new', workspaceId: 'htdot-project', requestId: 'req_bind_activity_1' })
+  const stream = await invoke(host, 'GET', '/commander/state', undefined, { accept: 'text/event-stream' })
+  host.ctx.emit('session/event', { id: host.sessionId }, { seq: 20, type: 'turn/start', time: 400, data: { turn: 4 } })
+  host.ctx.emit('session/event', { id: host.sessionId }, {
+    seq: 21,
+    type: 'tool/call',
+    time: 450,
+    data: { turn: 4, callId: 'call_1', name: 'bash', arguments: '{"description":"查看当前目录"}' },
+  })
+  const frames = stream.events.join('')
+  assert.match(frames, /event: commander\.status/)
+  assert.match(frames, /"activity":\{"text":"查看当前目录","at":450\}/)
   disposeAll(host.ctx)
 })
 

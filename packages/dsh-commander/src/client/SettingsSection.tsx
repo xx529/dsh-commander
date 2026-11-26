@@ -67,6 +67,7 @@ interface RotationForm {
   enabled: boolean
   periodDays: number
   includeUserTail: boolean
+  toolAudit: boolean
 }
 
 interface GroupResult {
@@ -101,7 +102,8 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
     autoDispatch: defaults.autoDispatch,
   })
   const [uiForm, setUiForm] = React.useState<UiForm>({ theme: 'follow', entryEnabled: true, nativeShell: true })
-  const [rotationForm, setRotationForm] = React.useState<RotationForm>({ enabled: false, periodDays: 1, includeUserTail: true })
+  const [acceptPolicy, setAcceptPolicy] = React.useState(true)
+  const [rotationForm, setRotationForm] = React.useState<RotationForm>({ enabled: false, periodDays: 1, includeUserTail: true, toolAudit: true })
   const [workspaces, setWorkspaces] = React.useState<WorkspaceDraft[]>([])
   const [savingGroup, setSavingGroup] = React.useState('')
   const [results, setResults] = React.useState<Record<string, GroupResult>>({})
@@ -142,10 +144,12 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
       entryEnabled: config?.ui?.entryEnabled !== false,
       nativeShell: config?.ui?.nativeShell !== false,
     }))
+    setAcceptPolicy(config?.commander?.allowCommanderAccept !== false)
     setRotationForm({
       enabled: config?.commander?.rotation?.enabled === true,
       periodDays: clampRotationDays(config?.commander?.rotation?.periodDays),
       includeUserTail: config?.commander?.rotation?.includeUserTail !== false,
+      toolAudit: config?.commander?.rotation?.toolAudit !== false,
     })
     setCommanderForm(current => ({
       provider: config?.commander?.model?.provider ?? current.provider,
@@ -209,6 +213,7 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
           ...(commanderForm.reasoningEffort.trim() === '' ? {} : { reasoningEffort: commanderForm.reasoningEffort.trim() }),
         },
         ...(commanderForm.agentPreset.trim() === '' ? {} : { agentPreset: commanderForm.agentPreset.trim() }),
+        allowCommanderAccept: acceptPolicy,
       },
     }))
   }
@@ -358,6 +363,7 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
           enabled: rotationForm.enabled,
           periodDays: rotationForm.periodDays,
           includeUserTail: rotationForm.includeUserTail,
+          toolAudit: rotationForm.toolAudit,
         },
       },
     }))
@@ -574,6 +580,17 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
             />
           </label>
         </div>
+        <div className="dshc-switch-row">
+          <input
+            type="checkbox"
+            className="dshc-check"
+            checked={acceptPolicy}
+            aria-label={t('settings.accept.commander')}
+            onChange={event => { setAcceptPolicy(event.target.checked) }}
+          />
+          <span>{t('settings.accept.commander')}</span>
+          <span className="dshc-field-hint">{t('settings.accept.commanderHint')}</span>
+        </div>
         <div className="dshc-row-actions">
           <button
             type="button"
@@ -629,6 +646,18 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
               <span className="dshc-field-hint">{t('settings.rotation.userTailHint')}</span>
             </div>
           </div>
+        </div>
+        <div className="dshc-switch-row">
+          <input
+            type="checkbox"
+            className="dshc-check"
+            checked={rotationForm.toolAudit}
+            aria-label={t('settings.rotation.toolAudit')}
+            disabled={!rotationForm.enabled}
+            onChange={event => { setRotationForm(current => ({ ...current, toolAudit: event.target.checked })) }}
+          />
+          <span>{t('settings.rotation.toolAudit')}</span>
+          <span className="dshc-field-hint">{t('settings.rotation.toolAuditHint')}</span>
         </div>
         {rotation === null ? null : (
           <div className="dshc-kv">

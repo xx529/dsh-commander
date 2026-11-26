@@ -4,13 +4,13 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import { dirname, join } from 'node:path'
-import { REPORT_SUMMARY_MAX } from '../config.ts'
+import { REPORT_SUMMARY_MAX, REWORK_COMMENT_MAX, WORKSPACE_SUMMARY_MAX } from '../config.ts'
 import type { CordisContext } from '../dsh-types.ts'
 import type { StoreSet } from '../store/index.ts'
 import { appendTimeline, createId } from '../store/base.ts'
-import type { Priority, TaskRecord, TaskStatus } from '../schema.ts'
+import { defaultWorkspaceRecord, type AcceptanceItem, type Priority, type ReportSummary, type TaskRecord, type TaskStatus, type WorkspaceRecord } from '../schema.ts'
 import type { DispatchService } from '../dispatch/service.ts'
-import { collectWorkspaceDirectory } from '../dispatch/candidates.ts'
+import { collectWorkspaceDirectory, resolveWorkspaceReference } from '../dispatch/candidates.ts'
 import { buildTaskRow, parseTaskQueryArgs, queryTasks, TASK_BLOCK_REASON_CHARS, TASK_TITLE_CHARS } from '../query/tasks.ts'
 import { parseSessionQueryArgs, querySessions } from '../query/sessions.ts'
 import { listEnabledWorkspaces } from '../query/workspaces.ts'
@@ -21,9 +21,10 @@ import { buildReportMaterials } from '../report-materials.ts'
 import { stopTaskSessions } from '../tasks/stop-sessions.ts'
 import { transitionTask, isTerminalStatus } from '../tasks/state-machine.ts'
 import type { DependencyNotifier } from '../tasks/notifications.ts'
-import { isReady, validateDependsOn, waitingFor } from '../tasks/dependencies.ts'
+import { hasPendingDependents, isReady, validateDependsOn, waitingFor, dependentsOf } from '../tasks/dependencies.ts'
+import { performAccept } from '../tasks/actions.ts'
 
-export const COMMANDER_TOOL_NAMES = ['commander_task_create', 'commander_task_get', 'commander_task_update', 'commander_task_dispatch', 'commander_task_list', 'commander_task_report', 'commander_workspace_list', 'commander_session_list'] as const
+export const COMMANDER_TOOL_NAMES = ['commander_task_create', 'commander_task_get', 'commander_task_update', 'commander_task_accept', 'commander_task_dispatch', 'commander_task_list', 'commander_task_report', 'commander_workspace_list', 'commander_workspace_update', 'commander_session_list'] as const
 export type CommanderToolName = (typeof COMMANDER_TOOL_NAMES)[number]
 
 /**
@@ -110,9 +111,11 @@ export interface CommanderToolsDeps {
   /** 该任务是否已有未决派发确认（task_update 的 pending 冲突 / task_get 派生字段）。 */
   hasPendingDispatch?: (taskId: string) => boolean
   /** 依赖提醒服务（set_dependencies/recover 成功后 pump；dispatch 结算后 pump）。 */
-  dependencyNotifier?: Pick<DependencyNotifier, 'afterDependencyInvalidated' | 'afterDispatchSettled' | 'afterTasksChanged'>
+  dependencyNotifier?: Partial<Pick<DependencyNotifier, 'afterDependencyInvalidated' | 'afterDispatchSettled' | 'afterTasksChanged' | 'afterAccepted'>>
   /** cancel 成功后清掉该任务的未决确认。 */
   onTaskSettled?: (taskId: string) => void
+  /** 工作区摘要写入后通知 UI（广播整帧 snapshot；人类改同一字段时也走同一显示路径）。 */
+  onWorkspaceChanged?: (record: WorkspaceRecord) => void | Promise<void>
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -128,6 +131,21 @@ const executorSessionId = (exec: ToolExecLike): string | undefined =>
   agentSessionIdOf(exec.agent) ?? exec.session?.id ?? exec.sessionId
 
 const failure = (code: string, message: string) => ({ ok: false as const, code, message })
+
+/** commander_task_get 的验收项投影：只保留指挥官写 prompt 需要的字段（schema 严格）。 */
+const acceptanceView = (items: readonly AcceptanceItem[]) => items.map((item) => ({
+  id: item.id,
+  text: item.text,
+  ...(item.verify !== undefined ? { verify: item.verify } : {}),
+  ...(item.evidence !== undefined ? { evidence: item.evidence } : {}),
+  state: item.state,
+}))
+
+const summaryView = (summary: ReportSummary) => ({
+  text: summary.text,
+  at: summary.at,
+  ...(summary.round !== undefined ? { round: summary.round } : {}),
+})
 
 export function createCommanderTools(deps: CommanderToolsDeps) {
   const now = deps.now ?? (() => Date.now())
@@ -201,7 +219,6 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
       waitingFor: { type: 'array', items: { type: 'string' } },
       blockReason: { type: 'string' },
       acceptanceCount: { type: 'number', required: true },
-      stale: { type: 'boolean', required: true },
       createdAt: { type: 'number', required: true },
       updatedAt: { type: 'number', required: true },
       ageMinutes: { type: 'number', required: true },
@@ -411,7 +428,7 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
     })
     const commander_task_get = wrap({
       name: 'commander_task_get',
-      description: 'Read one task (latest version/status/round/dependsOn/waitingFor/ready/block/pendingDispatch/acceptanceCount). Read-only; call before commander_task_update to get expectedRevision.',
+      description: 'Read one task (goal/acceptance/reportSummary/acceptanceHistory/pendingInstruction + latest version/status/round/dependsOn/waitingFor/ready/block/pendingDispatch/acceptanceCount). Read-only; call before composing a dispatch prompt, and before commander_task_update to get expectedRevision.',
       parameters: {
         taskId: { type: 'string', required: true, description: 'Task id' },
       },
@@ -426,6 +443,7 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
                 id: { type: 'string', required: true },
                 version: { type: 'number', required: true },
                 title: { type: 'string', required: true },
+                goal: { type: 'string', required: true },
                 status: { type: 'string', required: true },
                 round: { type: 'number', required: true },
                 workspaceId: { type: 'string', required: true },
@@ -434,6 +452,73 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
                 waitingFor: { type: 'array', items: { type: 'string' }, required: true },
                 ready: { type: 'boolean', required: true },
                 primarySessionId: { type: 'string' },
+                acceptance: {
+                  type: 'array',
+                  required: true,
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      id: { type: 'string', required: true },
+                      text: { type: 'string', required: true },
+                      verify: { type: 'string' },
+                      evidence: { type: 'string' },
+                      state: { type: 'string', required: true },
+                    },
+                  },
+                },
+                acceptanceHistory: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      round: { type: 'number', required: true },
+                      at: { type: 'number', required: true },
+                      items: {
+                        type: 'array',
+                        required: true,
+                        items: {
+                          type: 'object',
+                          additionalProperties: false,
+                          properties: {
+                            id: { type: 'string', required: true },
+                            text: { type: 'string', required: true },
+                            verify: { type: 'string' },
+                            evidence: { type: 'string' },
+                            state: { type: 'string', required: true },
+                          },
+                        },
+                      },
+                      reportSummary: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                          text: { type: 'string', required: true },
+                          at: { type: 'number', required: true },
+                          round: { type: 'number' },
+                        },
+                      },
+                    },
+                  },
+                },
+                reportSummary: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    text: { type: 'string', required: true },
+                    at: { type: 'number', required: true },
+                    round: { type: 'number' },
+                  },
+                },
+                pendingInstruction: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    text: { type: 'string', required: true },
+                    at: { type: 'number', required: true },
+                  },
+                },
                 block: {
                   type: 'object',
                   additionalProperties: false,
@@ -458,6 +543,7 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
             id: record.id,
             version: record.version,
             title: record.title,
+            goal: record.goal,
             status: record.status,
             round: record.round,
             workspaceId: record.workspaceId,
@@ -466,6 +552,10 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
             waitingFor: record.waitingFor ?? [],
             ready: record.ready,
             ...(record.primarySessionId !== undefined ? { primarySessionId: record.primarySessionId } : {}),
+            acceptance: record.acceptance ?? [],
+            ...(record.acceptanceHistory !== undefined ? { acceptanceHistory: record.acceptanceHistory } : {}),
+            ...(record.reportSummary !== undefined ? { reportSummary: record.reportSummary } : {}),
+            ...(record.pendingInstruction !== undefined ? { pendingInstruction: record.pendingInstruction } : {}),
             ...(record.block !== undefined ? { block: record.block } : {}),
             pendingDispatch: record.pendingDispatch,
             acceptanceCount: record.acceptanceCount,
@@ -488,6 +578,7 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
           id: task.id,
           version: task.version,
           title: task.title,
+          goal: task.goal,
           status: task.status,
           round: task.round ?? 1,
           workspaceId: task.workspaceId,
@@ -496,6 +587,21 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
           waitingFor: waitingFor(task, lookup),
           ready: isReady(task, lookup),
           ...(task.primarySessionId !== undefined ? { primarySessionId: task.primarySessionId } : {}),
+          acceptance: acceptanceView(task.acceptance),
+          ...(task.acceptanceHistory !== undefined && task.acceptanceHistory.length > 0
+            ? {
+                acceptanceHistory: task.acceptanceHistory.map((entry) => ({
+                  round: entry.round,
+                  at: entry.at,
+                  items: acceptanceView(entry.items),
+                  ...(entry.reportSummary !== undefined ? { reportSummary: summaryView(entry.reportSummary) } : {}),
+                })),
+              }
+            : {}),
+          ...(task.reportSummary !== undefined ? { reportSummary: summaryView(task.reportSummary) } : {}),
+          ...(task.pendingInstruction !== undefined
+            ? { pendingInstruction: { text: task.pendingInstruction.text, at: task.pendingInstruction.at } }
+            : {}),
           ...(task.block !== undefined ? {
             block: {
               reason: task.block.reason,
@@ -638,7 +744,7 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
               }
             }, expectedRevision)
             deps.onTaskChanged?.(updated)
-            await deps.dependencyNotifier?.afterTasksChanged(taskId)
+            await deps.dependencyNotifier?.afterTasksChanged?.(taskId)
             return { taskId: updated.id, status: updated.status, version: updated.version }
           } catch {
             return failure('task_stale_revision', 'task version changed; call commander_task_get again')
@@ -682,7 +788,7 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
             return failure(transition.code, transition.message)
           }
           deps.onTaskSettled?.(taskId)
-          await deps.dependencyNotifier?.afterDependencyInvalidated(taskId)
+          await deps.dependencyNotifier?.afterDependencyInvalidated?.(taskId)
           return { taskId, status: transition.task.status, version: transition.task.version }
         }
         // recover
@@ -699,21 +805,21 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
           timelineText: `从受阻恢复为 ${recoverTo}`,
         })
         if (!transition.ok) return failure(transition.code, transition.message)
-        await deps.dependencyNotifier?.afterTasksChanged(taskId)
+        await deps.dependencyNotifier?.afterTasksChanged?.(taskId)
         return { taskId, status: transition.task.status, version: transition.task.version }
       },
     })
     const commander_task_dispatch = wrap({
       name: 'commander_task_dispatch',
-      description: 'Dispatch a task. First call always returns needs_confirmation with decisionId; confirm by calling again with decisionId + confirmTarget.',
+      description: 'Dispatch a task. First call always returns needs_confirmation with decisionId; confirm by calling again with decisionId + confirmTarget. `prompt` is the working session message you write yourself: the Host sends it verbatim (no template, no prefix, no clipping) — include task title/goal/acceptance hints/constraints/previous-round summary yourself. Required on the first call; on confirm you may omit it to reuse the one stored with the confirmation card.',
       parameters: {
         taskId: { type: 'string', required: true },
         candidate: { type: 'object', additionalProperties: true, description: '{workspaceId, mode:"new"|"attach", sessionId?}' },
         decisionId: { type: 'string', description: 'decision id returned by needs_confirmation' },
         confirmTarget: { type: 'object', additionalProperties: true, description: '{workspaceId, mode:"new"|"attach", sessionId?}' },
+        prompt: { type: 'string', description: '工作会话收到的第一条消息全文（你自己写；Host 原样投递，不加模板、不截断）。首次调用必填，确认调用可省略' },
         capabilityNeeds: { type: 'array', items: { type: 'string' }, description: 'natural language capability hints (≤40 chars/项)' },
-        instruction: { type: 'string', description: '本轮要求（续派时写进 brief；与看板批注合并，≤1000 chars）' },
-        userRequest: { type: 'string', description: '用户原话（只用于展示/审计，≤2000 chars）' },
+        userRequest: { type: 'string', description: '用户原话（只用于展示/审计，不写进 prompt，≤2000 chars）' },
         requestId: { type: 'string', required: true },
       },
       output: {
@@ -762,13 +868,13 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
           candidate: args.candidate,
           decisionId: args.decisionId,
           confirmTarget: args.confirmTarget,
+          prompt: args.prompt,
           capabilityNeeds: args.capabilityNeeds,
-          instruction: args.instruction,
           userRequest: args.userRequest,
           requestId: args.requestId,
         })
         // 派完一个再提醒下一个：成功/拒绝后都 pump 一次（有待确认卡时 notifier 自行等待）。
-        await deps.dependencyNotifier?.afterDispatchSettled()
+        await deps.dependencyNotifier?.afterDispatchSettled?.()
         return result
       },
     })
@@ -850,7 +956,6 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
             ...(task.waitingFor !== undefined ? { waitingFor: task.waitingFor } : {}),
             ...(task.blockReason !== undefined ? { blockReason: clipLine(String(task.blockReason), TASK_BLOCK_REASON_CHARS) } : {}),
             ...(task.acceptanceCount !== 0 ? { acceptanceCount: task.acceptanceCount } : {}),
-            stale: task.stale,
             age: ageLabel(Number(task.ageMinutes ?? 0)),
             ...(task.pendingInstruction === true ? { pendingInstruction: true } : {}),
           }))
@@ -932,6 +1037,100 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
         const directory = await collectWorkspaceDirectory({ ctx: deps.ctx, stores: deps.stores })
         const workspaces = listEnabledWorkspaces(directory)
         return { total: workspaces.length, workspaces }
+      },
+    })
+    const commander_workspace_update = wrap({
+      name: 'commander_workspace_update',
+      description: `Update one workspace's summary — the same note humans edit in Settings > Workspaces > Summary (≤${WORKSPACE_SUMMARY_MAX} chars; empty string clears it). Only the summary is writable: allowlist and capability policy stay human-only. Works for any registered workspace (enabled or not); use commander_workspace_list to read current summaries. Keep it a stable description of what the workspace is for, not per-task instructions.`,
+      parameters: {
+        workspaceId: { type: 'string', required: true, description: 'Workspace id, name, or path (case-insensitive; ambiguous names are rejected).' },
+        summary: { type: 'string', required: true, description: `New summary (0..${WORKSPACE_SUMMARY_MAX} chars). Empty string clears it.` },
+      },
+      output: {
+        schema: {
+          oneOf: [
+            toolErrorSchema,
+            {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                workspaceId: { type: 'string', required: true },
+                name: { type: 'string', required: true },
+                summary: { type: 'string', required: true },
+                summarySource: { type: 'string', enum: ['model'], required: true },
+                summaryUpdatedAt: { type: 'number' },
+              },
+            },
+          ],
+        },
+        render: textRender((value) => {
+          const record = (value ?? {}) as { ok?: boolean; code?: string; message?: string; workspaceId?: string; name?: string; summary?: string; summarySource?: string; summaryUpdatedAt?: number }
+          if (record.ok === false) return `Rejected: ${record.code ?? '?'}${record.message !== undefined ? ` — ${record.message}` : ''}`
+          const summary = String(record.summary ?? '')
+          const updated = typeof record.summaryUpdatedAt === 'number' ? `, updatedAt=${record.summaryUpdatedAt}` : ''
+          return [
+            `Workspace summary saved: ${record.workspaceId ?? '?'} (${record.name ?? '?'})`,
+            `summary(${String(summary.length)}/${WORKSPACE_SUMMARY_MAX}): ${JSON.stringify(summary)}`,
+            `source=${record.summarySource ?? '?'}${updated}`,
+          ].join('\n')
+        }),
+      },
+      execute: async (args: Record<string, unknown>, exec: ToolExecLike) => {
+        exec.signal?.throwIfAborted?.()
+        const scoped = ensureCommanderScope(exec)
+        if (scoped !== null) return scoped
+        for (const key of Object.keys(args)) {
+          if (args[key] !== undefined && key !== 'workspaceId' && key !== 'summary') {
+            return failure('invalid_request', `unknown parameter '${key}'；commander_workspace_update 只接受 workspaceId/summary`)
+          }
+        }
+        const reference = typeof args.workspaceId === 'string' ? args.workspaceId.trim() : ''
+        if (reference === '') return failure('invalid_request', 'workspaceId is required（工作区 id/名称/路径）')
+        if (typeof args.summary !== 'string') return failure('invalid_request', 'summary is required（0..500 字；空串表示清空）')
+        if (args.summary.length > WORKSPACE_SUMMARY_MAX) return failure('invalid_request', `summary exceeds ${WORKSPACE_SUMMARY_MAX} characters`)
+        const summary = args.summary.trim()
+        const directory = await collectWorkspaceDirectory({ ctx: deps.ctx, stores: deps.stores })
+        const resolution = resolveWorkspaceReference(directory, reference)
+        if (resolution.status === 'ambiguous') {
+          return failure('invalid_request', `workspace "${reference}" 匹配到多个工作区：${resolution.candidates.map((entry) => entry.id).join(', ')}；请用 id 精确指定`)
+        }
+        if (resolution.status === 'not_found') {
+          const known = directory.map((entry) => entry.id).slice(0, 20).join(', ')
+          return failure('unknown_workspace', `workspace "${reference}" not found${known !== '' ? `；known: ${known}` : ''}`)
+        }
+        const entry = resolution.workspace
+        const timestamp = now()
+        const apply = (current: WorkspaceRecord): WorkspaceRecord => {
+          const next: WorkspaceRecord = { ...current, summary, summarySource: 'model' }
+          if (summary !== '') next.summaryUpdatedAt = timestamp
+          else delete next.summaryUpdatedAt
+          return next
+        }
+        const existing = deps.stores.workspaces.get(entry.id)
+        const createRecord = (): WorkspaceRecord => apply(defaultWorkspaceRecord({ id: entry.id, name: entry.name !== '' ? entry.name : entry.id, path: entry.path }))
+        let record: WorkspaceRecord
+        if (existing === undefined) {
+          record = createRecord()
+          await deps.stores.workspaces.put(record)
+        } else {
+          // 原子读改写：人类可能同时改 allowed/policy，不能拿旧快照整条覆盖。
+          const patched = await deps.stores.workspaces.patch(entry.id, apply)
+          if (patched === undefined) {
+            // 读后被人类整表替换删掉：按默认记录重建，确保摘要真的落盘。
+            record = createRecord()
+            await deps.stores.workspaces.put(record)
+          } else {
+            record = patched
+          }
+        }
+        await deps.onWorkspaceChanged?.(record)
+        return {
+          workspaceId: record.id,
+          name: record.name,
+          summary: record.summary,
+          summarySource: record.summarySource,
+          ...(record.summaryUpdatedAt !== undefined ? { summaryUpdatedAt: record.summaryUpdatedAt } : {}),
+        }
       },
     })
     const commander_session_list = wrap({
@@ -1226,7 +1425,89 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
         }
       },
     })
-    return { commander_task_create, commander_task_get, commander_task_update, commander_task_dispatch, commander_task_list, commander_task_report, commander_workspace_list, commander_session_list }
+    const commander_task_accept = wrap({
+      name: 'commander_task_accept',
+      description: 'Accept one task (review→done) on the user behalf ONLY when it has unfinished dependent tasks; otherwise rejected(code=no_dependents) and the human must accept on the board. Optional note is the handoff message carried into the [task-unblocked] reminder so it can be written into downstream dispatch prompts. Disabled when commander.allowCommanderAccept=false.',
+      parameters: {
+        taskId: { type: 'string', required: true, description: 'Task id in review' },
+        note: { type: 'string', description: `Optional handoff note (≤${REWORK_COMMENT_MAX} chars); strongly recommended as acceptance evidence` },
+        expectedRevision: { type: 'number', description: 'Optional task version from commander_task_get; stale revision is rejected' },
+      },
+      output: {
+        schema: {
+          oneOf: [
+            toolErrorSchema,
+            {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                taskId: { type: 'string', required: true },
+                status: { type: 'string', required: true },
+                version: { type: 'number', required: true },
+                acceptedBy: { type: 'string', enum: ['user', 'commander'], required: true },
+                dependents: { type: 'array', items: { type: 'string' }, required: true },
+                duplicate: { type: 'boolean', required: true },
+              },
+            },
+          ],
+        },
+        render: textRender((value) => {
+          const record = (value ?? {}) as { taskId?: string; status?: string; version?: number; dependents?: string[]; duplicate?: boolean; ok?: boolean; code?: string; message?: string }
+          if (record.ok === false) return `Rejected: ${record.code ?? '?'}${record.message !== undefined ? ` — ${record.message}` : ''}`
+          const dependents = record.dependents ?? []
+          return `Task ${record.taskId ?? '?'} accepted: status=${record.status ?? '?'} version=${record.version ?? '?'}${record.duplicate === true ? ' (duplicate)' : ''}${dependents.length > 0 ? ` dependents=${dependents.join(',')}` : ''}`
+        }),
+      },
+      execute: async (args: Record<string, unknown>, exec: ToolExecLike) => {
+        exec.signal?.throwIfAborted?.()
+        const scoped = ensureCommanderScope(exec)
+        if (scoped !== null) return scoped
+        const taskId = asString(args.taskId)
+        if (taskId === undefined) return failure('invalid_request', 'taskId is required')
+        const note = typeof args.note === 'string' ? args.note : undefined
+        if (note !== undefined && note.trim().length > REWORK_COMMENT_MAX) {
+          return failure('invalid_request', `note exceeds ${REWORK_COMMENT_MAX} characters`)
+        }
+        const task = deps.stores.tasks.get(taskId)
+        if (task === undefined) return failure('unknown_task', `task '${taskId}' not found`)
+        const dependents = dependentsOf(deps.stores.tasks.list(), taskId).map((item) => item.id)
+        if (task.status === 'done') {
+          return { taskId, status: task.status, version: task.version, acceptedBy: task.acceptedBy ?? 'user', dependents, duplicate: true }
+        }
+        if (task.status !== 'review') return failure('invalid_status', `commander_task_accept 只接受 review 任务，当前 ${task.status}`)
+        if (deps.stores.config.get().commander.allowCommanderAccept === false) {
+          return failure('accept_disabled', '指挥官验收已关闭（commander.allowCommanderAccept=false），请由人在看板验收')
+        }
+        if (!hasPendingDependents(deps.stores.tasks.list(), taskId)) {
+          return failure('no_dependents', '该任务没有后续任务，请由人在看板验收')
+        }
+        if (args.expectedRevision !== undefined) {
+          if (typeof args.expectedRevision !== 'number' || !Number.isInteger(args.expectedRevision)) {
+            return failure('invalid_request', 'expectedRevision must be an integer')
+          }
+          if (task.version !== args.expectedRevision) {
+            return failure('task_stale_revision', `expected revision ${String(args.expectedRevision)}, current ${task.version}; call commander_task_get again`)
+          }
+        }
+        const result = await performAccept({
+          stores: deps.stores,
+          now,
+          ...(deps.onTaskChanged !== undefined ? { onTaskChanged: deps.onTaskChanged } : {}),
+          ...(deps.onTaskSettled !== undefined ? { onTaskSettled: deps.onTaskSettled } : {}),
+          ...(deps.dependencyNotifier !== undefined ? { dependencyNotifier: deps.dependencyNotifier } : {}),
+        }, taskId, { ...(note !== undefined ? { note } : {}), actor: 'commander' })
+        if (!result.ok) return failure(result.kind === 'not_found' ? 'unknown_task' : result.kind, result.message)
+        return {
+          taskId: result.task.id,
+          status: result.task.status,
+          version: result.task.version,
+          acceptedBy: result.task.acceptedBy ?? 'commander',
+          dependents,
+          duplicate: result.duplicate,
+        }
+      },
+    })
+    return { commander_task_create, commander_task_get, commander_task_update, commander_task_accept, commander_task_dispatch, commander_task_list, commander_task_report, commander_workspace_list, commander_workspace_update, commander_session_list }
   }
   const safeBuildSpecs = (): Record<CommanderToolName, unknown> | null => {
     try {

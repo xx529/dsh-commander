@@ -176,8 +176,10 @@ function makeStore() {
       ],
     },
   }
+  const archiveQueries = []
   return {
     sent,
+    archiveQueries,
     getSessionsResult() { return sessionsResult },
     setSessionsResult(next) { sessionsResult = next },
     setBindResult(next) { bindResult = next },
@@ -202,10 +204,20 @@ function makeStore() {
     restoreTask: async (taskId) => { sent.push({ restore: taskId }); return { ok: true, data: { id: taskId, status: 'draft' } } },
     acceptTask: async (taskId) => { sent.push({ accept: taskId }); return { ok: true, data: { id: taskId, status: 'done' } } },
     reworkTask: async (taskId, comment) => { sent.push({ rework: taskId, comment }); return { ok: true, data: { id: taskId, status: 'running' } } },
-    loadArchive: async () => ({ ok: true, data: { tasks: [
-      { id: 'tr_1', title: '已归档任务', status: 'archived', workspaceId: 'ws_1', updatedAt: 3 },
-      { id: 'tr_2', title: '已取消任务', status: 'cancelled', workspaceId: 'ws_1', updatedAt: 2 },
-    ] } }),
+    loadArchive: async (query = {}) => {
+      archiveQueries.push(query)
+      const tasks = [
+        { id: 'tr_1', title: '已归档任务', status: 'archived', workspaceId: 'ws_1', updatedAt: Date.now() - 86_400_000, round: 2 },
+        { id: 'tr_2', title: '已取消任务', status: 'cancelled', workspaceId: 'ws_1', updatedAt: Date.now() - 2 * 86_400_000, round: 1 },
+      ]
+      return { ok: true, data: {
+        tasks,
+        nextCursor: null,
+        total: tasks.length,
+        summary: { archivedCount: 1, cancelledCount: 1, last30dCount: 2 },
+        months: [{ key: new Date(tasks[0].updatedAt).toISOString().slice(0, 7), count: 2 }],
+      } }
+    },
     getTaskDetail: async (taskId) => ({ ok: true, data: {
       task: { ...(view.tasks ?? []).find(row => row.id === taskId) ?? { id: taskId }, primarySessionId: 'sess_1', priority: 'normal' },
       acceptance: [{ id: 'acc_1', text: '导出按钮可见', state: 'evidence_present', evidence: '截图' }],
@@ -766,26 +778,107 @@ check('binding picker shows the limit-20 truncated hint',
 // ---- M2 board page -------------------------------------------------------
 const boardStore = makeStore()
 const boardTasks = [
-  { id: 'task_p', title: '待确认任务', status: 'proposed', workspaceId: 'ws_1', priority: 'high', updatedAt: 9, acceptanceCount: 0, primarySessionId: 'sess_1' },
+  { id: 'task_p', title: '待确认任务', status: 'proposed', workspaceId: 'ws_1', priority: 'high', updatedAt: 9, acceptanceCount: 0, primarySessionId: 'sess_1', dependsOn: ['task_q'], waitingFor: ['task_q'], ready: false },
   { id: 'task_q', title: '待运行任务', status: 'queued', workspaceId: 'ws_1', priority: 'normal', lastActivityAt: 1 },
-  { id: 'task_a', title: '进行中任务', status: 'running', workspaceId: 'ws_1', priority: 'normal', lastActivityAt: 2, stale: true, capability: { status: 'inherited', enabledCount: 0, disabledCount: 0 } },
+  { id: 'task_a', title: '进行中任务', status: 'running', workspaceId: 'ws_1', priority: 'normal', lastActivityAt: 2, capability: { status: 'inherited', enabledCount: 0, disabledCount: 0 } },
   { id: 'task_b', title: '受阻任务', status: 'blocked', workspaceId: 'ws_1', block: { code: 'delivery_failed', since: 4 } },
   { id: 'task_r', title: '待验收任务', status: 'review', workspaceId: 'ws_1', acceptanceCount: 2, updatedAt: 5, capability: { status: 'applied', enabledCount: 3, disabledCount: 2 } },
   { id: 'task_d', title: '完成的任务', status: 'done', workspaceId: 'ws_1', updatedAt: 3 },
 ]
 boardStore.notify({ tasks: boardTasks, counts: { review: 1, done: 1 }, pendingDispatch: null })
 const boardContainer = document.createElement('div')
+// Focus-driven dependency highlighting needs the container in the document.
+document.body.appendChild(boardContainer)
 const boardRoot = createRoot(boardContainer)
 await act(async () => {
   boardRoot.render(React.createElement(board.component, { ...board.options.inject(), store: boardStore, t }))
 })
 check('board renders six columns', boardContainer.querySelectorAll('.dshc-board-column').length === 6,
   String(boardContainer.querySelectorAll('.dshc-board-column').length))
+check('board columns default to equal grid tracks with 5 drag handles',
+  boardContainer.querySelectorAll('.dshc-board-resizer').length === 5
+  && (boardContainer.querySelector('.dshc-board-columns')?.getAttribute('style') ?? '').split('minmax').length - 1 === 6,
+  boardContainer.querySelector('.dshc-board-columns')?.getAttribute('style'))
 check('board column heads carry the frozen labels',
   ['board.column.proposed', 'board.column.queued', 'board.column.running', 'board.column.blocked', 'board.column.review', 'board.column.done']
     .every(key => boardContainer.textContent.includes(key)))
 check('board renders cards across columns', boardContainer.querySelectorAll('.dshc-board-card').length === 6)
-check('board shows stale badge', boardContainer.textContent.includes('board.card.staleBadge'))
+check('board card renders the dependency gate', boardContainer.textContent.includes('board.card.prereq')
+  && boardContainer.textContent.includes('board.card.remaining'))
+check('only cards with dependencies render a one-line gate', boardContainer.querySelectorAll('.dshc-dep-gate').length === 1)
+check('cards without dependencies render no dependency block', boardContainer.querySelectorAll('.dshc-dep-spacer').length === 0)
+check('collapsed dependency gate does not render its list', boardContainer.querySelectorAll('.dshc-dep-gate-list').length === 0)
+check('board card renders the downstream count', boardContainer.textContent.includes('board.card.downstream'))
+const depCard = boardContainer.querySelector('.dshc-board-card[data-task-id="task_p"]')
+check('board cards carry dependency data attributes', depCard?.getAttribute('data-dep-active') === 'false')
+await act(async () => { depCard.focus() })
+check('focusing a card highlights its chain and dims the rest',
+  depCard.getAttribute('data-dep-active') === 'true'
+  && boardContainer.querySelectorAll('.dshc-board-card[data-dep-dim="true"]').length > 0,
+  JSON.stringify({
+    active: depCard.getAttribute('data-dep-active'),
+    dim: boardContainer.querySelectorAll('.dshc-board-card[data-dep-dim="true"]').length,
+    focused: boardContainer.querySelector('.dshc-board-card[data-task-id="task_p"]') === document.activeElement,
+    text: depCard.textContent.slice(0, 60),
+  }))
+await act(async () => { depCard.blur() })
+check('blur clears the dependency highlight',
+  boardContainer.querySelectorAll('.dshc-board-card[data-dep-dim="true"]').length === 0)
+const lonelyCard = boardContainer.querySelector('.dshc-board-card[data-task-id="task_a"]')
+await act(async () => { lonelyCard.focus() })
+check('focusing a card without dependency links does not dim the board',
+  boardContainer.querySelectorAll('.dshc-board-card[data-dep-dim="true"]').length === 0
+  && lonelyCard.getAttribute('data-dep-active') === 'false'
+  && boardContainer.querySelectorAll('.dshc-edge-line, .dshc-dep-edge').length === 0)
+await act(async () => { lonelyCard.blur() })
+
+// 依赖连线覆盖层：jsdom 没有布局，用固定矩形驱动一次真实的绘制，
+// 锁住 SVG 连线与箭头（等待中琥珀箭头 / 前置已完成绿色箭头）。
+const boardWrap = boardContainer.querySelector('.dshc-board-columns-wrap')
+const cardEl = id => boardContainer.querySelector(`.dshc-board-card[data-task-id="${id}"]`)
+const stubRect = (element, left, top, width, height) => {
+  element.getBoundingClientRect = () => ({
+    left, top, width, height, right: left + width, bottom: top + height, x: left, y: top,
+    toJSON() { return this },
+  })
+}
+Object.defineProperty(boardWrap, 'clientWidth', { configurable: true, value: 900 })
+Object.defineProperty(boardWrap, 'clientHeight', { configurable: true, value: 600 })
+stubRect(boardWrap, 0, 0, 900, 600)
+stubRect(cardEl('task_q'), 220, 40, 180, 120)
+stubRect(cardEl('task_p'), 20, 300, 180, 120)
+await act(async () => { cardEl('task_p').focus() })
+const waitingEdge = boardContainer.querySelector('.dshc-dep-edge[data-state="waiting"]')
+check('dependency overlay draws a waiting edge with the amber arrow',
+  waitingEdge !== null && waitingEdge.getAttribute('marker-end') === 'url(#dshc-dep-arrow)',
+  waitingEdge?.getAttribute('d') ?? 'no edge')
+await act(async () => { cardEl('task_p').blur() })
+// 前置改为 done：连线换成绿色，并带绿色箭头（用户反馈「绿色没有了箭头」）。
+await act(async () => {
+  boardStore.notify({
+    tasks: boardTasks.map(row => (row.id === 'task_q' ? { ...row, status: 'done' } : row)),
+    counts: { review: 1, done: 2 }, pendingDispatch: null,
+  })
+})
+stubRect(cardEl('task_q'), 220, 40, 180, 120)
+stubRect(cardEl('task_p'), 20, 300, 180, 120)
+await act(async () => { cardEl('task_p').focus() })
+const readyEdge = boardContainer.querySelector('.dshc-dep-edge[data-state="ready"]')
+check('ready dependency edge keeps its arrow in the success colour',
+  readyEdge !== null && readyEdge.getAttribute('marker-end') === 'url(#dshc-dep-arrow-ready)'
+  && boardContainer.querySelector('#dshc-dep-arrow-ready path')?.getAttribute('fill')?.includes('state-success-primary'),
+  readyEdge?.getAttribute('d') ?? 'no edge')
+await act(async () => { cardEl('task_p').blur() })
+await act(async () => {
+  boardStore.notify({ tasks: boardTasks, counts: { review: 1, done: 1 }, pendingDispatch: null })
+})
+delete boardWrap.clientWidth
+delete boardWrap.clientHeight
+delete boardWrap.getBoundingClientRect
+for (const id of ['task_p', 'task_q']) delete cardEl(id).getBoundingClientRect
+check('long-silent running card shows no stall badge',
+  boardContainer.querySelectorAll('.dshc-board-stale').length === 0
+  && !boardContainer.textContent.includes('board.card.staleBadge'))
 check('board shows blocked code', boardContainer.textContent.includes('delivery_failed'))
 check('board hides the capability count when nothing was enabled (no 0/0 noise)',
   !boardContainer.textContent.includes('task.capability (0/0)'))
@@ -926,25 +1019,35 @@ await act(async () => {})
 check('cancel calls POST /commander/tasks/:id/cancel',
   boardStore.sent.some(entry => entry !== null && typeof entry === 'object' && entry.cancel !== undefined),
   JSON.stringify(boardStore.sent.filter(entry => entry !== null && typeof entry === 'object' && entry.cancel)))
-check('cancel shows the cancelled toast', boardContainer.textContent.includes('board.toast.cancelled'))
+check('board no longer renders action toasts', boardContainer.querySelector('.dshc-board-toast') === null)
 check('no board PATCH was sent by the card', boardStore.sent.filter(entry => entry !== null && typeof entry === 'object' && entry.boardPatch).length === patchesBefore)
 
 // Trash tab + restore.
-const trashTab = [...boardContainer.querySelectorAll('button')].find(button => button.textContent === 'board.tab.trash')
+const trashTab = [...boardContainer.querySelectorAll('button')].find(button => button.textContent.startsWith('board.tab.trash'))
 await act(async () => { trashTab.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
 await act(async () => {})
-check('trash tab lists archived/cancelled tasks', boardContainer.querySelectorAll('.dshc-board-trash-row').length === 2,
-  String(boardContainer.querySelectorAll('.dshc-board-trash-row').length))
-const restoreButton = [...boardContainer.querySelectorAll('button')].find(button => button.textContent === 'board.action.restore')
-check('trash offers restore for archived tasks', restoreButton !== undefined)
+await act(async () => {})
+check('trash tab renders the archive stream', boardContainer.querySelectorAll('.dshc-archive-card').length === 2,
+  String(boardContainer.querySelectorAll('.dshc-archive-card').length))
+check('trash requests the first archive batch with the page size',
+  boardStore.archiveQueries.at(-1)?.limit === 60,
+  JSON.stringify(boardStore.archiveQueries.at(-1)))
+check('trash shows filters and stats', boardContainer.querySelectorAll('.dshc-archive-chip').length === 3
+  && boardContainer.textContent.includes('board.trash.stats.total')
+  && boardContainer.textContent.includes('board.trash.stats.recent'))
+const archivedChip = [...boardContainer.querySelectorAll('.dshc-archive-chip')].find(button => button.textContent === 'board.trash.status.archived')
+await act(async () => { archivedChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+await act(async () => {})
+check('trash status filter is sent to the Host', boardStore.archiveQueries.at(-1)?.status === 'archived',
+  JSON.stringify(boardStore.archiveQueries.at(-1)))
+const restoreButton = boardContainer.querySelector('.dshc-archive-restore')
+check('trash offers restore for archived tasks', restoreButton !== null)
 await act(async () => { restoreButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
 await act(async () => {})
 check('restore calls the Host route', boardStore.sent.some(entry => entry !== null && typeof entry === 'object' && entry.restore === 'tr_1'))
 
-// Back to conversation.
-const backButton = [...boardContainer.querySelectorAll('button')].find(button => button.textContent === 'board.back')
-await act(async () => { backButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
-check('board back button returns to conversation', selectedPanels.includes('conversation'), JSON.stringify(selectedPanels))
+// Header no longer carries a back button (removed by design).
+check('board header has no back button', [...boardContainer.querySelectorAll('button')].every(button => button.textContent !== 'board.back'))
 
 // ---- production dictionary render: no raw key literals (task-63) ----------
 const boardZhContainer = document.createElement('div')

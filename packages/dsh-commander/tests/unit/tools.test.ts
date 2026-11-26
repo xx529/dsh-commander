@@ -23,10 +23,10 @@ async function setup() {
 
 type WhenFn = (context: { agent?: unknown }) => boolean
 
-test('install registers eight global tools; when() admits only the commander session', async () => {
+test('install registers ten global tools; when() admits only the commander session', async () => {
   const { tools, toolsService } = await setup()
   assert.equal(tools.install(), true)
-  assert.deepEqual(toolsService.registered.map((item) => (item.definition as { name: string }).name).sort(), ['commander_session_list', 'commander_task_create', 'commander_task_dispatch', 'commander_task_get', 'commander_task_list', 'commander_task_report', 'commander_task_update', 'commander_workspace_list'])
+  assert.deepEqual(toolsService.registered.map((item) => (item.definition as { name: string }).name).sort(), ['commander_session_list', 'commander_task_accept', 'commander_task_create', 'commander_task_dispatch', 'commander_task_get', 'commander_task_list', 'commander_task_report', 'commander_task_update', 'commander_workspace_list', 'commander_workspace_update'])
   const when = toolsService.registered[0]?.options?.when as WhenFn | undefined
   assert.equal(typeof when, 'function')
   // 全局注册（归属=插件），但只有当前指挥官会话的 step 能看到/调用
@@ -36,6 +36,16 @@ test('install registers eight global tools; when() admits only the commander ses
   assert.equal(when?.({ agent: undefined }), false)
   tools.dispose()
   assert.equal(toolsService.registered.length, 0, 'dispose 应注销全部注册')
+})
+
+test('commander_task_dispatch 参数面：prompt 存在、instruction 已移除', async () => {
+  const { tools } = await setup()
+  const parameters = (tools.specs()?.commander_task_dispatch as { parameters?: Record<string, unknown> }).parameters ?? {}
+  // 真实 defineTool 会把 parameters 转成 JSON Schema（properties/required），identity 环境则是插件形状。
+  const shape = (parameters.properties as Record<string, unknown> | undefined) ?? parameters
+  assert.equal('instruction' in shape, false)
+  assert.equal(typeof shape.prompt, 'object')
+  tools.dispose()
 })
 
 test('tools execute enforces commander scope and creates task drafts', async () => {
@@ -139,13 +149,13 @@ test('real @deepseek-ai/dsh-tools defineTool accepts all six specs (output.rende
   await tools.prepare()
   const specs = tools.specs()
   assert.notEqual(specs, null)
-  for (const name of ['commander_task_create', 'commander_task_update', 'commander_task_dispatch', 'commander_task_list', 'commander_task_report'] as const) {
+  for (const name of ['commander_task_create', 'commander_task_update', 'commander_task_dispatch', 'commander_task_list', 'commander_task_report', 'commander_workspace_update'] as const) {
     const spec = specs?.[name] as { name: string; output?: { schema?: unknown; render?: unknown } }
     assert.equal(spec.name, name)
     assert.equal(typeof spec.output?.render, 'function', `${name} must expose output.render for real defineTool`)
     assert.equal(typeof spec.output?.schema, 'object')
   }
-  // 真实 defineTool 对五个 spec 都不抛（这一步就是本机真实契约验证）
+  // 真实 defineTool 对六个 spec 都不抛（这一步就是本机真实契约验证）
   assert.equal(tools.install(), true)
   tools.dispose()
 })

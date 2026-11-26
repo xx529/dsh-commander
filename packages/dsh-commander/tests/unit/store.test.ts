@@ -65,6 +65,29 @@ test('workspace store replaceAll deletes stale records', async () => {
   assert.deepEqual(stores.workspaces.list().map((item) => item.id), ['b'])
 })
 
+test('workspace store patch updates summary without clobbering allowlist/policy', async () => {
+  const { stores } = await setup()
+  const record = {
+    v: 1 as const,
+    id: 'a',
+    name: 'A',
+    path: '/tmp/a',
+    allowed: true,
+    summary: 'old',
+    summarySource: 'manual' as const,
+    capabilityPolicy: { mode: 'auto' as const, lastSelection: { status: 'applied' as const, enabled: ['x'], disabled: [], at: 1 } },
+  }
+  await stores.workspaces.put(record)
+  const updated = await stores.workspaces.patch('a', (current) => ({ ...current, summary: 'new', summarySource: 'model' as const }))
+  assert.equal(updated?.summary, 'new')
+  assert.equal(updated?.summarySource, 'model')
+  const stored = stores.workspaces.get('a')
+  assert.equal(stored?.allowed, true)
+  assert.equal(stored?.capabilityPolicy.mode, 'auto')
+  assert.deepEqual(stored?.capabilityPolicy.lastSelection?.enabled, ['x'])
+  assert.equal(await stores.workspaces.patch('missing', (current) => current), undefined)
+})
+
 test('task store appendTimeline increments version and enforces optimistic version', async () => {
   const { stores } = await setup()
   const base = {

@@ -30,3 +30,32 @@ test('window page caches the rendered html and defaults locale to zh', () => {
   assert.equal(reads, 1)
   assert.match(first ?? '', /lang="zh"/)
 })
+
+test('window page passes a valid role through to the boot payload', () => {
+  const page = createWindowPage({ token: 't', readBundle: () => BUNDLE })
+  const ball = page.html('/commander/window?token=t&role=ball') ?? ''
+  assert.match(ball, /"role":"ball"/)
+  const panel = page.html('/commander/window?token=t&panel=1&role=panel') ?? ''
+  assert.match(panel, /"role":"panel"/)
+  assert.match(panel, /"panel":true/)
+  const bubble = page.html('/commander/window?token=t&role=bubble') ?? ''
+  assert.match(bubble, /"role":"bubble"/)
+  // 气泡窗加载失败时不能出现 fallback 球（否则气泡窗里会有一颗假球）。
+  assert.equal(bubble.includes('__fallback_ball'), false)
+})
+
+test('window page ignores an unknown role and falls back to the single-window mode', () => {
+  const page = createWindowPage({ token: 't', readBundle: () => BUNDLE })
+  const html = page.html('/commander/window?token=t&role=session') ?? ''
+  assert.match(html, /"role":""/)
+})
+
+test('window page caches per role so the ball and panel windows get distinct pages', () => {
+  let reads = 0
+  const page = createWindowPage({ token: 't', readBundle: () => { reads += 1; return BUNDLE } })
+  const ball = page.html('/commander/window?token=t&role=ball')
+  const panel = page.html('/commander/window?token=t&panel=1&role=panel')
+  assert.notEqual(ball, panel)
+  assert.equal(reads, 1)
+  assert.equal(page.html('/commander/window?token=t&role=ball'), ball)
+})

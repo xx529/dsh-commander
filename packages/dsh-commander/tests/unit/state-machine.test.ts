@@ -94,3 +94,11 @@ test('transitionTask applies effects/domain mutate and rejects stale expectedRev
   assert.equal(ok.task.block, undefined)
   assert.equal(ok.task.timeline.at(-1)?.text, '恢复')
 })
+
+test('review→done allows commander_accept alongside user_accept; other actors stay rejected', () => {
+  const review = task({ status: 'review', acceptance })
+  assert.equal(checkTransition(review, 'done', { actor: 'commander_accept' }).ok, true)
+  assert.equal(checkTransition(review, 'done', { actor: 'user_accept' }).ok, true)
+  assert.equal(checkTransition(review, 'done', { actor: 'commander_tool' }).ok, false)
+  assert.equal(checkTransition(review, 'done', { actor: 'host_turn' }).ok, false)
+})

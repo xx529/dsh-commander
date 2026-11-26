@@ -125,8 +125,9 @@ const server = http.createServer((request, response) => {
       response.end('bad token')
       return
     }
-    // 自动展开面板，便于截图（生产里由点击/热键触发）。
-    const injected = html.replace('<head>', '<head><script>window.addEventListener("error", e => fetch("/beacon?error=" + encodeURIComponent(String(e.message) + " @" + (e.filename||"") + ":" + (e.lineno||0))).catch(() => {}));window.addEventListener("unhandledrejection", e => fetch("/beacon?rejection=" + encodeURIComponent(String(e.reason))).catch(() => {}));</script>')
+    // 球窗口加载后自动展开面板（生产里由点击/热键触发），便于截到「球 + 面板同时存在」。
+    // 面板窗口自己也加载同一页面，但它带 role=panel，不再触发。
+    const injected = html.replace('<head>', '<head><script>window.addEventListener("error", e => fetch("/beacon?error=" + encodeURIComponent(String(e.message) + " @" + (e.filename||"") + ":" + (e.lineno||0))).catch(() => {}));window.addEventListener("unhandledrejection", e => fetch("/beacon?rejection=" + encodeURIComponent(String(e.reason))).catch(() => {}));try{if(new URL(location.href).searchParams.get("role")==="ball"&&window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.invoke){setTimeout(function(){window.__TAURI__.core.invoke("set_mode",{mode:"panel"}).catch(function(){});},1500);}}catch(_){}</script>')
     response.setHeader('content-type', 'text/html; charset=utf-8')
     console.log(`[shot] html bytes=${Buffer.byteLength(injected, 'utf8')} bodyAt=${injected.indexOf('<body>')} bodyHead=${injected.slice(injected.indexOf('<body>'), injected.indexOf('<body>') + 1400).replace(/\n/g, ' ')}`)
     response.end(injected)
@@ -245,7 +246,7 @@ server.listen(0, '127.0.0.1', () => {
               } catch (error) {
                 finish(1, `screencapture failed: ${String(error)}`)
               }
-            }, 4_500)
+            }, 5_500)
           }
         } catch {}
       }

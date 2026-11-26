@@ -66,6 +66,11 @@ export interface RotationConfig {
   periodDays: number
   /** 简报是否包含用户最近原话，默认 true。 */
   includeUserTail: boolean
+  /**
+   * 换代后是否给新会话预置 dsh-trace-inspect 的「工具审计」，默认 true。
+   * 插件未安装/未启用（路由 404）时自动跳过，不报错。
+   */
+  toolAudit?: boolean
   /** 当前第几任，默认 1；绑定/轮换时由 Host 管理。 */
   generation?: number
   /** 本任开始时间（ms）；绑定成功时写入，换任时重置。 */
@@ -79,6 +84,8 @@ export interface CommanderConfig {
   model: ModelRef
   agentPreset?: string
   rotation?: RotationConfig
+  /** 是否允许指挥官通过 commander_task_accept 验收有下游的任务；缺省视为开启。 */
+  allowCommanderAccept?: boolean
 }
 
 export interface JevConfig {
@@ -199,6 +206,14 @@ export interface PendingInstruction {
   source: 'rework'
 }
 
+/** 验收交接说明：人/指挥官验收时写下的结论，供下游派发时的 prompt 引用。 */
+export interface AcceptNote {
+  text: string
+  at: number
+  /** 验收发生的轮次；旧记录缺省。 */
+  round?: number
+}
+
 export interface CapabilityPlan {
   policy: 'inherit' | 'auto'
   executor: 'capability-panel'
@@ -242,6 +257,10 @@ export interface TaskRecord {
   acceptance: AcceptanceItem[]
   /** 当前轮次；缺省 1。只是序号，不承载任务状态。 */
   round?: number
+  /** 最近一次验收的交接说明/结论（人验收或指挥官验收时写入；仅在有下游时可能非空）。 */
+  acceptNote?: AcceptNote
+  /** 最近一次验收由谁完成：人（看板）或指挥官（工具）；旧记录缺省视为人。 */
+  acceptedBy?: 'user' | 'commander'
   /** 历史轮次的验收（最近 5 轮）；当前轮验收始终在 `acceptance`。 */
   acceptanceHistory?: AcceptanceRound[]
   /** 看板「继续派发」批注；下一次 commander_task_dispatch 成功后删除。 */
@@ -308,9 +327,7 @@ export interface DispatchRecord {
   /** 本任务第几轮；旧记录缺省 1。 */
   round?: number
   kind?: 'initial' | 'continue'
-  /** 指挥官在 commander_task_dispatch 里传的本轮要求。 */
-  instruction?: string
-  /** 实际发给工作会话的 brief 原文。 */
+  /** 实际发给工作会话的消息原文（= commander_task_dispatch.prompt，Host 原样投递、零拼接零截断）。 */
   brief?: string
   /** 触发本轮派发的用户原话。 */
   userRequest?: { text: string; at: number; source: 'chat' | 'board' }
@@ -406,7 +423,8 @@ export const isCommanderConfig: Validator<CommanderConfig> = (value) =>
   isString(value.sessionId) &&
   isModelRef(value.model) &&
   isOptional(isString)(value.agentPreset) &&
-  (value.rotation === undefined || isRotationConfig(value.rotation))
+  (value.rotation === undefined || isRotationConfig(value.rotation)) &&
+  (value.allowCommanderAccept === undefined || isBool(value.allowCommanderAccept))
 
 export const isJevConfig: Validator<JevConfig> = (value) =>
   isObject(value) &&
@@ -553,6 +571,12 @@ export const isPendingInstruction: Validator<PendingInstruction> = (value) =>
   isNumber(value.at) &&
   value.source === 'rework'
 
+export const isAcceptNote: Validator<AcceptNote> = (value) =>
+  isObject(value) &&
+  isString(value.text, 1, REWORK_COMMENT_MAX) &&
+  isNumber(value.at) &&
+  (value.round === undefined || (isInt(value.round) && value.round >= 1))
+
 /** dependsOn：≤5 个非空 id、无重复、无自依赖（环由 Host 的依赖校验器检测）。 */
 export function isDependsOn(value: unknown, selfId?: string): value is string[] {
   if (!Array.isArray(value) || value.length > 5) return false
@@ -581,6 +605,8 @@ export const isTaskRecord: Validator<TaskRecord> = (value) =>
   isOptional(isString)(value.primarySessionId) &&
   isArrayOf(isAcceptanceItem)(value.acceptance) &&
   (value.round === undefined || (isInt(value.round) && value.round >= 1)) &&
+  isOptional(isAcceptNote)(value.acceptNote) &&
+  (value.acceptedBy === undefined || value.acceptedBy === 'user' || value.acceptedBy === 'commander') &&
   isOptional(isArrayOf(isAcceptanceRound))(value.acceptanceHistory) &&
   isOptional(isPendingInstruction)(value.pendingInstruction) &&
   isOptional(isArrayOf(isString))(value.workspaceIds) &&
@@ -612,7 +638,6 @@ export const isDispatchRecord: Validator<DispatchRecord> = (value) =>
   isEnum(['auto', 'confirmed', 'overridden', 'cancelled', 'jev_unavailable', 'rejected'] as const)(value.outcome) &&
   (value.round === undefined || (isInt(value.round) && value.round >= 1)) &&
   (value.kind === undefined || isEnum(['initial', 'continue'] as const)(value.kind)) &&
-  isOptional(isString)(value.instruction) &&
   isOptional(isString)(value.brief) &&
   isOptional(isObject)(value.userRequest)
 
@@ -651,7 +676,7 @@ export function defaultConfigRecord(now = Date.now()): ConfigRecord {
       workspacePath: '',
       sessionId: '',
       model: { provider: '', model: '' },
-      rotation: { enabled: false, periodDays: 1, includeUserTail: true, generation: 1, generationStartedAt: now },
+      rotation: { enabled: false, periodDays: 1, includeUserTail: true, toolAudit: true, generation: 1, generationStartedAt: now },
     },
     jev: { ...DEFAULT_JEV, keySource: 'env', envVar: DEFAULT_JEV.apiKeyEnv },
     board: { archiveAfterDays: 30, syncUserEdits: true },

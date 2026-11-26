@@ -1,6 +1,6 @@
 /**
  * Pure unit tests for the M2 board helpers (column mapping, legal drag
- * transitions, PATCH payloads, stale badge) per
+ * transitions, PATCH payloads) per
  * docs/architecture/m2m3-contract-patch.md §2.2–§2.5.
  */
 import test from 'node:test'
@@ -8,8 +8,10 @@ import assert from 'node:assert/strict'
 import {
   BOARD_COLUMNS, BOARD_PRIORITIES, TASK_STAGES, acceptanceSummary, boardColumnOf, buildBoardPatch, buildTaskFeed, buildTaskRounds,
   canArchiveTask, canCancelTask, canRestoreTask, formatBoardTime, formatClockTime, formatDayLabel, groupBoardTasks,
-  hasPendingDispatch, isStaleTask, newBoardRequestId, newEditId, priorityLabelKey, sameLocalDay, shouldCollapseSummary,
+  hasPendingDispatch, newBoardRequestId, newEditId, priorityLabelKey, sameLocalDay, shouldCollapseSummary,
   sortColumnTasks, statusLabelKey, taskStage, taskStageBlocked, taskTerminal, trashTasks, waitingFor,
+  DEFAULT_BOARD_COLUMN_FR, archiveCount, archiveMonthBounds, archiveMonthKey, dependencyClosure, dependencyEdgePath, dependencyHighlightChain,
+  downstreamCounts, groupArchiveByMonthDay, normalizeBoardColumnFr, resizeBoardColumnFr,
 } from '../../src/client/board.ts'
 import type { TaskDetailView, TaskSessionLinkView, TaskView } from '../../src/client/types.ts'
 
@@ -90,15 +92,6 @@ test('buildBoardPatch only emits metadata fields (never status)', () => {
   assert.match(minted.requestId, /^req_board_[0-9a-f]{16}$/u)
   assert.match(newEditId(), /^edit_[0-9a-f]{32}$/u)
   assert.match(newBoardRequestId(), /^[A-Za-z0-9_-]{8,64}$/u)
-})
-
-test('stale badge prefers the Host flag, else recomputes >20min for active statuses', () => {
-  const now = 100 * 60 * 1_000
-  assert.equal(isStaleTask(task({ id: 't', status: 'running', stale: true, lastActivityAt: now }), now), true)
-  assert.equal(isStaleTask(task({ id: 't', status: 'running', lastActivityAt: now - 21 * 60 * 1_000 }), now), true)
-  assert.equal(isStaleTask(task({ id: 't', status: 'running', lastActivityAt: now - 5 * 60 * 1_000 }), now), false)
-  assert.equal(isStaleTask(task({ id: 't', status: 'blocked', lastActivityAt: now - 60 * 60 * 1_000 }), now), false)
-  assert.equal(isStaleTask(task({ id: 't', status: 'queued', updatedAt: now }), now), false)
 })
 
 test('label helpers and priorities cover the contract enums', () => {
@@ -365,4 +358,155 @@ test('buildTaskRounds keeps legacy single-dispatch payload as round 1', () => {
   assert.equal(rounds[0]?.round, 1)
   assert.equal(rounds[0]?.dispatch?.id, 'dec_old')
   assert.equal(rounds[0]?.acceptance[0]?.text, '旧验收')
+})
+
+
+test('dependencyClosure walks both directions for hover highlighting', () => {
+  const a = task({ id: 'a' })
+  const b = task({ id: 'b', dependsOn: ['a'] })
+  const c = task({ id: 'c', dependsOn: ['b'], status: 'running' })
+  const lonely = task({ id: 'lonely' })
+  const rows = [a, b, c, lonely]
+  assert.deepEqual([...dependencyClosure(rows, 'b')].sort(), ['a', 'b', 'c'])
+  assert.deepEqual([...dependencyClosure(rows, 'a')].sort(), ['a', 'b', 'c'])
+  assert.deepEqual([...dependencyClosure(rows, 'lonely')], ['lonely'])
+  assert.deepEqual([...dependencyClosure(rows, 'missing')], ['missing'])
+  assert.deepEqual([...downstreamCounts(rows).entries()].sort(), [['a', 1], ['b', 1]])
+})
+
+test('dependencyClosure returns the whole graph, including sibling prerequisites', () => {
+  // 用户反馈：C 依赖 A 和 B 时，悬停 C 高亮 A+B，悬停 A 只高亮 C——同一张图按节点忽大忽小。
+  const a = task({ id: 'a', status: 'review' })
+  const b = task({ id: 'b', status: 'review' })
+  const c = task({ id: 'c', dependsOn: ['a', 'b'], status: 'proposed' })
+  const lonely = task({ id: 'lonely' })
+  const rows = [a, b, c, lonely]
+  for (const id of ['a', 'b', 'c']) {
+    assert.deepEqual([...dependencyClosure(rows, id)].sort(), ['a', 'b', 'c'], `hover ${id}`)
+    assert.deepEqual([...dependencyHighlightChain(rows, id) ?? []].sort(), ['a', 'b', 'c'], `highlight ${id}`)
+  }
+  assert.deepEqual([...dependencyClosure(rows, 'lonely')], ['lonely'])
+  assert.equal(dependencyHighlightChain(rows, 'lonely'), null)
+})
+
+test('archive helpers group by local month/day and build month bounds', () => {
+  const day1 = new Date(2026, 10, 24, 10, 0, 0).getTime()
+  const day1Later = new Date(2026, 10, 24, 12, 0, 0).getTime()
+  const previous = new Date(2026, 9, 2, 9, 0, 0).getTime()
+  const rows = [
+    task({ id: 'a1', status: 'archived', updatedAt: day1 }),
+    task({ id: 'a2', status: 'cancelled', updatedAt: day1Later }),
+    task({ id: 'a3', status: 'archived', updatedAt: previous }),
+  ]
+  assert.equal(archiveMonthKey(day1), '2026-11')
+  assert.deepEqual(archiveMonthBounds('2026-11'), {
+    from: new Date(2026, 10, 1).getTime(),
+    to: new Date(2026, 11, 1).getTime(),
+  })
+  const groups = groupArchiveByMonthDay(rows)
+  assert.deepEqual(groups.map((row) => row.key), ['2026-11', '2026-10'])
+  assert.equal(groups[0]?.days.length, 1)
+  assert.deepEqual(groups[0]?.days[0]?.tasks.map((row) => row.id), ['a2', 'a1'])
+  assert.equal(groups[1]?.days[0]?.tasks[0]?.id, 'a3')
+})
+
+
+test('archiveCount does not double-count cancelled tasks present in both counts and tasks', () => {
+  const tasks = [
+    task({ id: 'c1', status: 'cancelled' }),
+    task({ id: 'a1', status: 'archived' }),
+    task({ id: 'r1', status: 'review' }),
+  ]
+  // counts 是全域计数（含 archived，快照 tasks 不含 archived）；cancelled 两边都有。
+  assert.equal(archiveCount({ counts: { archived: 5, cancelled: 2 }, tasks }), 7)
+  // 旧快照没有 counts 时按 tasks 兜底。
+  assert.equal(archiveCount({ counts: {}, tasks }), 2)
+  // counts 与 tasks 都缺时返回 0。
+  assert.equal(archiveCount({ counts: {}, tasks: [] }), 0)
+})
+
+
+test('dependencyHighlightChain only activates for visible dependency relations', () => {
+  const a = task({ id: 'a' })
+  const b = task({ id: 'b', dependsOn: ['a'] })
+  const lonely = task({ id: 'lonely' })
+  const rows = [a, b, lonely]
+  assert.deepEqual([...dependencyHighlightChain(rows, 'b') ?? []].sort(), ['a', 'b'])
+  assert.deepEqual([...dependencyHighlightChain(rows, 'a') ?? []].sort(), ['a', 'b'])
+  assert.equal(dependencyHighlightChain(rows, 'lonely'), null)
+  // 依赖已归档/不在快照：只剩一个不可见 id，不能触发整板淡出。
+  const archivedDep = task({ id: 'c', dependsOn: ['gone'] })
+  assert.equal(dependencyHighlightChain([...rows, archivedDep], 'c'), null)
+  assert.equal(dependencyHighlightChain(rows, 'missing'), null)
+})
+
+
+test('dependencyEdgePath connects the nearest pair of edges instead of the left-mid edge', () => {
+  // 截图（2026-11-26）实测几何：待派发列两张卡上下相邻，运行中卡在第三列偏上。
+  const pendingTop = { left: 40, right: 257, top: 38, bottom: 239 }
+  const pendingBottom = { left: 40, right: 257, top: 248, bottom: 449 }
+  const running = { left: 572, right: 815, top: 38, bottom: 159 }
+  // 同一列纵排：从下卡顶边垂直连到上卡底边，不再绕到左/右侧边的正中。
+  assert.equal(
+    dependencyEdgePath(pendingBottom, pendingTop),
+    'M 148.5 248 C 148.5 238, 148.5 249, 148.5 239',
+  )
+  assert.equal(
+    dependencyEdgePath(pendingTop, pendingBottom),
+    'M 148.5 239 C 148.5 249, 148.5 238, 148.5 248',
+  )
+  // 跨列：从运行中卡的左边（对准目标卡中心、夹在转角内）连到左侧目标卡的右边。
+  assert.equal(
+    dependencyEdgePath(running, pendingBottom),
+    'M 572 147 C 439.7 147, 389.3 260, 257 260',
+  )
+  // 跨列、目标在上：两边各取相近的一侧，而不是都钉在竖直中心。
+  assert.equal(
+    dependencyEdgePath(pendingTop, running),
+    'M 257 98.5 C 389.3 98.5, 439.7 138.5, 572 138.5',
+  )
+})
+
+
+test('dependencyEdgePath never anchors on a card corner and never emits NaN', () => {
+  // 极窄/极矮的卡：端点退化为边中点，仍然落在边上。
+  const flat = { left: 0, right: 100, top: 0, bottom: 10 }
+  const tall = { left: 200, right: 300, top: 300, bottom: 420 }
+  const d = dependencyEdgePath(flat, tall)
+  assert.doesNotMatch(d, /NaN|Infinity/)
+  assert.equal(d, 'M 100 5 C 142 5, 158 312, 200 312')
+  // 反向依赖（目标在左侧）：从右边卡片的左边出发，进入左边卡片的右边。
+  const left = { left: 40, right: 257, top: 38, bottom: 239 }
+  const right = { left: 572, right: 815, top: 38, bottom: 159 }
+  assert.equal(
+    dependencyEdgePath(right, left),
+    'M 572 138.5 C 439.7 138.5, 389.3 98.5, 257 98.5',
+  )
+})
+
+
+test('board columns default to six equal tracks and resize keeps the sum', () => {
+  const base = [...DEFAULT_BOARD_COLUMN_FR]
+  assert.equal(base.length, 6)
+  const next = resizeBoardColumnFr(base, 0, 120, 1200)
+  assert.equal(next.length, 6)
+  assert.ok(Math.abs(next.reduce((sum, value) => sum + value, 0) - 6) < 1e-9)
+  assert.ok((next[0] ?? 0) > 1 && (next[1] ?? 0) < 1)
+  // 拖到最左：两列都不低于 180px 换算的 fr，总和不变。
+  const clamped = resizeBoardColumnFr(base, 0, -10_000, 1200)
+  const minFr = (180 * 6) / 1200
+  assert.ok((clamped[0] ?? 0) >= minFr - 1e-9)
+  assert.ok((clamped[1] ?? 0) >= minFr - 1e-9)
+  assert.ok(Math.abs(clamped.reduce((sum, value) => sum + value, 0) - 6) < 1e-9)
+  // 最后一个列没有右分隔条；无宽度时不计算。
+  assert.deepEqual(resizeBoardColumnFr(base, 5, 100, 1200), base)
+  assert.deepEqual(resizeBoardColumnFr(base, 0, 100, 0), base)
+})
+
+test('normalizeBoardColumnFr accepts only six positive numbers', () => {
+  assert.deepEqual(normalizeBoardColumnFr([1, 1, 1, 1, 1, 1]), [1, 1, 1, 1, 1, 1])
+  assert.equal(normalizeBoardColumnFr([1, 1, 1, 1, 1]), null)
+  assert.equal(normalizeBoardColumnFr([1, 1, 1, 1, 1, 0]), null)
+  assert.equal(normalizeBoardColumnFr('nope'), null)
+  assert.equal(normalizeBoardColumnFr([1, 1, 1, 1, 1, Number.NaN]), null)
 })

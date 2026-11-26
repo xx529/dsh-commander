@@ -1,11 +1,10 @@
-// M2 看板 Host 集成：PATCH/boardEdits/30s 合并注入、archive/restore/archive list、stale、详情。
+// M2 看板 Host 集成：PATCH/boardEdits/30s 合并注入、archive/restore/archive list、详情。
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { apply } from '../../src/host/index.ts'
 import { createStores } from '../../src/host/store/index.ts'
 import { commanderDomainSpec } from '../../src/host/domain.ts'
 import { defaultWorkspaceRecord, type TaskRecord } from '../../src/host/schema.ts'
-import { STALE_AFTER_MS } from '../../src/host/config.ts'
 import { createFakeCtx, createFakeSessionController, createFakeSessionQuery, createFakeStorageDomain, createFakeWebServer, createFakeWorkspaceRegistry } from '../fakes/fakes.ts'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -84,10 +83,10 @@ test('PATCH board: status is rejected (no drag); priority/title still write task
       field: 'priority', value: 'high', editId: 'edit_00000000000000000000000000000002', requestId: 'req_m2_patch_2',
     })
     assert.equal(response.status, 200)
-    const body = response.body as { ok: boolean; task: { priority: string; stale: boolean }; boardEdit: { editId: string; injectedAt: number | null }; rev: number }
+    const body = response.body as { ok: boolean; task: { priority: string } & Record<string, unknown>; boardEdit: { editId: string; injectedAt: number | null }; rev: number }
     assert.equal(body.ok, true)
     assert.equal(body.task.priority, 'high')
-    assert.equal(body.task.stale, false) // proposed 不是 queued/running：stale 只读派生为 false
+    assert.equal('stale' in body.task, false) // 2026-11-24：看板不再下发 stale
     assert.equal(body.boardEdit.injectedAt, null)
     assert.equal(typeof body.rev, 'number')
     assert.equal(host.stores.tasks.get('task_m2_1')?.priority, 'high')
@@ -168,21 +167,22 @@ test('PATCH board: 30s 合并窗口内多条 edit 合并为一条 [board-edit] �
   }
 })
 
-test('task detail adds boardEdits/stale/archivedAt; state excludes archived + archiveSummary', async () => {
+test('task detail adds boardEdits/archivedAt; state excludes archived + archiveSummary; no stale field', async () => {
   const host = await setup({ mergeMs: 20 })
   try {
-    seedTask(host.stores, { status: 'running', lastActivityAt: Date.now() - STALE_AFTER_MS - 1000 })
+    // 长静默任务（running 且 21min 无活动）：历史 stale 判定会置 true，移除后不得出现该字段。
+    seedTask(host.stores, { status: 'running', lastActivityAt: Date.now() - 21 * 60 * 1000 })
     await host.webServer.invoke('PATCH', '/commander/board/tasks/task_m2_1', { field: 'priority', value: 'high', editId: 'edit_detail_1', requestId: 'req_m2_detail_1' })
     const detail = await host.webServer.invoke('GET', '/commander/tasks/task_m2_1')
     assert.equal(detail.status, 200)
-    const detailBody = detail.body as { stale: boolean; boardEdits: Array<{ editId: string; field: string; injectedAt: number | null }> }
-    assert.equal(detailBody.stale, true)
+    const detailBody = detail.body as { boardEdits: Array<{ editId: string; field: string; injectedAt: number | null }> } & Record<string, unknown>
+    assert.equal('stale' in detailBody, false)
     assert.equal(detailBody.boardEdits[0]?.editId, 'edit_detail_1')
     assert.equal(detailBody.boardEdits[0]?.field, 'priority')
     const state = await host.webServer.invoke('GET', '/commander/state')
-    const stateBody = state.body as { tasks: Array<{ id: string; stale: boolean; acceptanceCount: number; evidenceInsufficientCount: number }>; archiveSummary: { archivedCount: number; cancelledCount: number }; counts: Record<string, number> }
+    const stateBody = state.body as { tasks: Array<{ id: string; acceptanceCount: number; evidenceInsufficientCount: number } & Record<string, unknown>>; archiveSummary: { archivedCount: number; cancelledCount: number }; counts: Record<string, number> }
     const view = stateBody.tasks.find((task) => task.id === 'task_m2_1')
-    assert.equal(view?.stale, true)
+    assert.equal(view !== undefined && 'stale' in view, false)
     assert.equal(view?.acceptanceCount, 0)
     assert.deepEqual(stateBody.archiveSummary, { archivedCount: 0, cancelledCount: 0 })
   } finally {
@@ -318,4 +318,93 @@ test('详情里会话已不在内存 → running 派生为 idle（历史残留�
   assert.equal(detail.status, 200)
   const body = detail.body as { sessions: Array<{ sessionId: string; status: string }> }
   assert.deepEqual(body.sessions.map((row) => [row.sessionId, row.status]), [['session-gone', 'idle']])
+})
+
+test('archive list: q/status/workspace/range filters, total/summary/months, cursor, row fields, invalid params', async () => {
+  const host = await setup({ mergeMs: 20 })
+  try {
+    const day = 86_400_000
+    const base = Date.now()
+    const seed = (id: string, title: string, status: TaskRecord['status'], workspaceId: string, updatedAt: number, round = 1): void => {
+      seedTask(host.stores, { id, title, status, workspaceId, updatedAt, round })
+    }
+    seed('arc_a1', '调研 SSE 断线', 'archived', 'ws-a', base - 2 * day, 2)
+    seed('arc_a2', '回收站 分页', 'archived', 'ws-a', base - 40 * day)
+    seed('arc_a3', '取消的 SSE 实验', 'cancelled', 'ws-b', base - 10 * day)
+    seed('arc_a4', '别的任务', 'archived', 'ws-b', base - 70 * day)
+
+    const monthKey = (ms: number): string => {
+      const date = new Date(ms)
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    }
+
+    const all = await host.webServer.invoke('GET', '/commander/archive?limit=10')
+    assert.equal(all.status, 200)
+    const allBody = all.body as {
+      tasks: Array<{ id: string; round: number; sessionCount: number }>
+      total: number
+      summary: { archivedCount: number; cancelledCount: number; last30dCount: number }
+      months: Array<{ key: string; count: number }>
+      nextCursor: number | null
+    }
+    assert.equal(allBody.total, 4)
+    assert.equal(allBody.tasks.length, 4)
+    assert.equal(allBody.summary.archivedCount, 3)
+    assert.equal(allBody.summary.cancelledCount, 1)
+    assert.equal(allBody.summary.last30dCount, 2) // a1(2d) + a3(10d)
+    assert.equal(allBody.tasks.find((task) => task.id === 'arc_a1')?.round, 2)
+    assert.equal(allBody.tasks.find((task) => task.id === 'arc_a1')?.sessionCount, 0)
+    assert.deepEqual(allBody.months.map((row) => row.key).includes(monthKey(base - 2 * day)), true)
+    assert.deepEqual(allBody.months.map((row) => row.key).includes(monthKey(base - 70 * day)), true)
+    assert.deepEqual([...allBody.months].map((row) => row.key), [...allBody.months].map((row) => row.key).sort((a, b) => b.localeCompare(a)))
+
+    const q = await host.webServer.invoke('GET', '/commander/archive?q=SSE')
+    const qBody = q.body as { tasks: Array<{ id: string }>; total: number }
+    assert.equal(qBody.total, 2)
+    assert.deepEqual(qBody.tasks.map((task) => task.id).sort(), ['arc_a1', 'arc_a3'])
+
+    const cancelled = await host.webServer.invoke('GET', '/commander/archive?status=cancelled')
+    assert.equal((cancelled.body as { total: number }).total, 1)
+    const wsA = await host.webServer.invoke('GET', '/commander/archive?workspaceId=ws-a')
+    assert.equal((wsA.body as { total: number }).total, 2)
+
+    const from = base - 15 * day
+    const to = base + day
+    const ranged = await host.webServer.invoke('GET', `/commander/archive?from=${String(from)}&to=${String(to)}`)
+    const rangedBody = ranged.body as { total: number; months: Array<{ key: string; count: number }> }
+    assert.equal(rangedBody.total, 2)
+    // 月份导航忽略 from/to：仍列出全部月份（a1/a2/a4 的 3 个月份）。
+    assert.equal(rangedBody.months.length >= 3, true)
+    assert.equal(rangedBody.months.reduce((sum, row) => sum + row.count, 0), 4)
+
+    // 筛选后的月份只统计 status=archived（忽略区间），a3 不计入。
+    const archivedRanged = await host.webServer.invoke('GET', `/commander/archive?status=archived&from=${String(from)}&to=${String(to)}`)
+    const archivedBody = archivedRanged.body as { total: number; months: Array<{ count: number }> }
+    assert.equal(archivedBody.total, 1)
+    assert.equal(archivedBody.months.reduce((sum, row) => sum + row.count, 0), 3)
+
+    const first = await host.webServer.invoke('GET', '/commander/archive?limit=2')
+    const firstBody = first.body as { tasks: Array<{ id: string }>; nextCursor: number | null; total: number }
+    assert.equal(firstBody.tasks.length, 2)
+    assert.equal(firstBody.total, 4)
+    assert.equal(typeof firstBody.nextCursor, 'number')
+    const second = await host.webServer.invoke('GET', `/commander/archive?limit=2&cursor=${String(firstBody.nextCursor)}`)
+    const secondBody = second.body as { tasks: Array<{ id: string }>; total: number }
+    assert.equal(secondBody.tasks.length, 2)
+    assert.equal(secondBody.total, 4)
+    assert.deepEqual(secondBody.tasks.map((task) => task.id), ['arc_a2', 'arc_a4'])
+
+    for (const path of [
+      '/commander/archive?status=nope',
+      '/commander/archive?from=10&to=10',
+      '/commander/archive?limit=101',
+      `/commander/archive?q=${'x'.repeat(101)}`,
+    ]) {
+      const invalid = await host.webServer.invoke('GET', path)
+      assert.equal(invalid.status, 400, path)
+      assert.equal((invalid.body as { code: string }).code, 'invalid_request')
+    }
+  } finally {
+    host.restoreEnv()
+  }
 })

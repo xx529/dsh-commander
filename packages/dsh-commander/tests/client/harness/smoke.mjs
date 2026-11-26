@@ -247,6 +247,7 @@ check('settings opts into pointer events', /\.dshc-settings\s*\{[^}]*pointer-eve
 check('settings renders five groups', countOf(rendered.settings, '<section class="dshc-card"') === 5, String(countOf(rendered.settings, '<section class="dshc-card"')))
 check('settings renders rotation group', rendered.settings?.includes('会话轮换') === true)
 check('settings renders rotation switch (default off)', rendered.settings?.includes('启用轮换') === true)
+check('settings renders tool audit switch (default on)', rendered.settings?.includes('换代后默认开启工具审计') === true && rendered.settings?.includes('仅当已安装 dsh-trace-inspect') === true)
 check('settings renders binding kv', rendered.settings?.includes('sess_1') === true)
 check('settings renders workspace row', rendered.settings?.includes('HtDot') === true)
 check('settings renders jev fields', rendered.settings?.includes('JEV_API_KEY') === true)

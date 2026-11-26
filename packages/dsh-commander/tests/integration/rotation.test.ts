@@ -1,6 +1,8 @@
 // R1：会话轮换（门控 / 提交 / 退役 / 回滚 / 触发 / 路由），契约 §3/§7/§8。
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { apply } from '../../src/host/index.ts'
 import { createStores } from '../../src/host/store/index.ts'
 import { commanderDomainSpec } from '../../src/host/domain.ts'
@@ -17,8 +19,37 @@ import {
 const DAY = 86_400_000
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+// 换代会给新会话探测 dsh-trace-inspect 的本机审计路由。这里起一个本机 HTTP 桩，
+// 把 DSH_WEB_URL 指过去（Host 用它拼审计 origin）；缺省回 404（等价未安装）。
+// 这样既不碰 live DSH，也不用等真实超时。
+const ORIGINAL_DSH_WEB_URL = process.env.DSH_WEB_URL
+let auditResponder: (url: URL) => { status: number; body?: unknown } = () => ({ status: 404, body: { error: 'session not found' } })
+const auditCalls: Array<{ method: string; url: URL; body: string }> = []
+const auditServer = createServer((req, res) => {
+  const chunks: Buffer[] = []
+  req.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+  req.on('end', () => {
+    const body = Buffer.concat(chunks).toString('utf8')
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    auditCalls.push({ method: req.method ?? '', url, body })
+    const result = auditResponder(url)
+    res.statusCode = result.status
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(result.body ?? {}))
+  })
+})
+await new Promise<void>((resolve) => auditServer.listen(0, '127.0.0.1', () => resolve()))
+process.env.DSH_WEB_URL = `http://127.0.0.1:${(auditServer.address() as AddressInfo).port}`
+test.after(async () => {
+  await new Promise<void>((resolve) => auditServer.close(() => resolve()))
+  if (ORIGINAL_DSH_WEB_URL === undefined) delete process.env.DSH_WEB_URL
+  else process.env.DSH_WEB_URL = ORIGINAL_DSH_WEB_URL
+})
+
 interface SetupOptions {
   events?: Array<Record<string, unknown>>
+  /** 假 sessions.get 返回的 cwd；用于 bindSelect 的工作区归属推断。 */
+  sessionCwd?: string
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -35,7 +66,11 @@ async function setup(options: SetupOptions = {}) {
       workspaceRegistry: createFakeWorkspaceRegistry([{ id: 'ws-a', name: 'A', path: '/tmp/a' }]),
       sessions: {
         async get(sessionId: string) {
-          return { id: sessionId, events: options.events ?? [] }
+          return {
+            id: sessionId,
+            ...(options.sessionCwd !== undefined ? { cwd: options.sessionCwd } : {}),
+            events: options.events ?? [],
+          }
         },
       },
     },
@@ -52,6 +87,7 @@ interface SeedOptions {
   startedAt?: number
   sessionId?: string
   workspaceId?: string
+  toolAudit?: boolean
 }
 
 async function seedBound(host: Awaited<ReturnType<typeof setup>>, options: SeedOptions = {}): Promise<void> {
@@ -69,6 +105,7 @@ async function seedBound(host: Awaited<ReturnType<typeof setup>>, options: SeedO
         enabled: options.enabled ?? true,
         periodDays: options.periodDays ?? 1,
         includeUserTail: true,
+        ...(options.toolAudit !== undefined ? { toolAudit: options.toolAudit } : {}),
         generation: options.generation ?? 2,
         generationStartedAt: startedAt,
       },
@@ -144,6 +181,10 @@ test('rotation: force 成功 → create→inject→config→旧 retired/新 link
 
   // create 用绑定工作区（不是 cwd）
   assert.deepEqual(host.controller.created[0], { workspaceId: 'ws-a' })
+  // 新会话标题 = 第 N 任 · 换任当天（本地日期）
+  assert.equal(host.controller.renames.length, 1)
+  assert.equal(host.controller.renames[0]?.sessionId, 'session-new')
+  assert.match(host.controller.renames[0]?.title ?? '', /^第 3 任 · \d{4}-\d{2}-\d{2}$/)
   // 模型跟随旧任
   assert.equal(host.controller.modelSelections[0]?.sessionId, 'session-new')
   // inject 一份交接简报
@@ -192,6 +233,82 @@ test('rotation: create 失败 → 502 rotation_failed，旧绑定不变、不退
   const snapshot = state.body as { rotation: { lastError?: { code: string } }; commanderStatus: string }
   assert.equal(snapshot.rotation.lastError?.code, 'rotation_failed')
   assert.equal(snapshot.commanderStatus, 'bound')
+})
+
+test('rotation: 标题改名失败只记 warn，交接照常提交（标题非提交条件）', async () => {
+  const host = await setup()
+  await seedBound(host)
+  await enableForActivity(host)
+  host.controller.nextSessionId = 'session-title-fail'
+  host.agents.add('session-title-fail')
+  host.controller.failRename = new Error('title boom')
+  const response = await host.webServer.invoke('POST', '/commander/rotation', { requestId: 'req_rot_title', force: true })
+  assert.equal(response.status, 200)
+  assert.equal((response.body as { rotated: boolean }).rotated, true)
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-title-fail')
+  // 简报照常注入，旧任照常退役
+  assert.equal(host.agents.get('session-title-fail')?.injected.length, 1)
+  const old = host.stores.sessions.list().find((link) => link.sessionId === 'session-old')
+  assert.equal(old?.status, 'retired')
+})
+
+test('rotation: 换代默认给新会话预置工具审计（dsh-trace-inspect）', async () => {
+  const host = await setup()
+  await seedBound(host)
+  await enableForActivity(host)
+  host.controller.nextSessionId = 'session-audit'
+  host.agents.add('session-audit')
+  auditCalls.length = 0
+  auditResponder = () => ({ status: 200, body: { enabled: true, sealed: false } })
+  try {
+    const response = await host.webServer.invoke('POST', '/commander/rotation', { requestId: 'req_rot_audit', force: true })
+    assert.equal(response.status, 200)
+    assert.equal(auditCalls.length, 1)
+    const call = auditCalls[0]!
+    assert.equal(call.method, 'POST')
+    assert.equal(call.url.pathname, '/trace-inspect/api/tool-audit')
+    assert.equal(call.url.searchParams.get('sessionId'), 'session-audit')
+    assert.deepEqual(JSON.parse(call.body), { enabled: true })
+  } finally {
+    auditResponder = () => ({ status: 404, body: { error: 'session not found' } })
+  }
+})
+
+test('rotation: 关闭 toolAudit（或审计路由 404）都不影响换代', async () => {
+  const host = await setup()
+  await seedBound(host)
+  await enableForActivity(host)
+  // 显式关闭：不探测
+  await host.stores.config.update((current) => ({
+    ...current,
+    commander: {
+      ...current.commander,
+      rotation: { ...(current.commander.rotation as NonNullable<typeof current.commander.rotation>), toolAudit: false },
+    },
+  }))
+  host.controller.nextSessionId = 'session-audit-off'
+  host.agents.add('session-audit-off')
+  auditCalls.length = 0
+  const off = await host.webServer.invoke('POST', '/commander/rotation', { requestId: 'req_rot_audit_off', force: true })
+  assert.equal(off.status, 200)
+  assert.equal(auditCalls.length, 0)
+  // 写回不能把 toolAudit=false 丢掉（否则下次读取回默认 true）
+  assert.equal(host.stores.config.get().commander.rotation?.toolAudit, false)
+
+  // 默认开启但插件缺失（404）：换代照常提交
+  await host.stores.config.update((current) => ({
+    ...current,
+    commander: {
+      ...current.commander,
+      rotation: { ...(current.commander.rotation as NonNullable<typeof current.commander.rotation>), toolAudit: true },
+    },
+  }))
+  host.controller.nextSessionId = 'session-audit-404'
+  host.agents.add('session-audit-404')
+  const missing = await host.webServer.invoke('POST', '/commander/rotation', { requestId: 'req_rot_audit_404', force: true })
+  assert.equal(missing.status, 200)
+  assert.equal((missing.body as { rotated: boolean }).rotated, true)
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-audit-404')
 })
 
 test('rotation: 新会话没有 live agent → 502，不写 config（简报未注入时不提交）', async () => {
@@ -271,18 +388,134 @@ test('rotation: 投递前兜底 → 消息落到新会话（并保留用户 echo
   assert.ok(messages.some((message) => message.role === 'user' && message.text === '今天做什么'))
 })
 
-test('rotation: 手动「绑定到新会话」不生成简报（D1 回归）', async () => {
+test('rotation: 手动「绑定到新会话」不生成简报（D1），但按换代应用标题与工具审计', async () => {
   const host = await setup()
   await seedBound(host, { enabled: true })
   host.controller.nextSessionId = 'session-manual'
   host.agents.add('session-manual')
+  auditCalls.length = 0
+  auditResponder = () => ({ status: 200, body: { enabled: true, sealed: false } })
+  try {
+    const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
+    assert.equal(response.status, 200)
+    // D1：手动绑定仍不注入交接简报
+    assert.equal(host.agents.get('session-manual')?.injected.length, 0)
+    // B2：标题与工具审计按换代默认应用（不是只改数据不应用副作用）
+    assert.equal(host.controller.renames.length, 1)
+    assert.equal(host.controller.renames[0]?.sessionId, 'session-manual')
+    assert.match(host.controller.renames[0]?.title ?? '', /^第 3 任 · \d{4}-\d{2}-\d{2}$/)
+    assert.equal(auditCalls.length, 1)
+    assert.equal(auditCalls[0]?.method, 'POST')
+    assert.equal(auditCalls[0]?.url.pathname, '/trace-inspect/api/tool-audit')
+    assert.equal(auditCalls[0]?.url.searchParams.get('sessionId'), 'session-manual')
+    assert.deepEqual(JSON.parse(auditCalls[0]?.body ?? '{}'), { enabled: true })
+    // 代际递增、起始时间重置
+    const config = host.stores.config.get()
+    assert.equal(config.commander.sessionId, 'session-manual')
+    assert.equal(config.commander.rotation?.generation, 3)
+  } finally {
+    auditResponder = () => ({ status: 404, body: { error: 'session not found' } })
+  }
+})
+
+test('rotation: 轮换关闭时，手动「绑定到新会话」保持现状（不设标题、不预置审计）', async () => {
+  const host = await setup()
+  await seedBound(host, { enabled: false })
+  host.controller.nextSessionId = 'session-manual-off'
+  host.agents.add('session-manual-off')
+  auditCalls.length = 0
   const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
   assert.equal(response.status, 200)
-  assert.equal(host.agents.get('session-manual')?.injected.length, 0)
-  // 代际递增、起始时间重置
+  assert.equal(host.controller.renames.length, 0)
+  assert.equal(auditCalls.length, 0)
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-manual-off')
+})
+
+test('rotation: 手动「绑定到新会话」首次绑定写「第 1 任」标题并预置审计', async () => {
+  const host = await setup()
+  await host.stores.config.update((current) => ({
+    ...current,
+    commander: {
+      ...current.commander,
+      rotation: { ...(current.commander.rotation as NonNullable<typeof current.commander.rotation>), enabled: true },
+    },
+  }))
+  host.controller.nextSessionId = 'session-first'
+  host.agents.add('session-first')
+  auditCalls.length = 0
+  auditResponder = () => ({ status: 200, body: { enabled: true, sealed: false } })
+  try {
+    const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
+    assert.equal(response.status, 200)
+    assert.equal(host.controller.renames.length, 1)
+    assert.match(host.controller.renames[0]?.title ?? '', /^第 1 任 · \d{4}-\d{2}-\d{2}$/)
+    assert.equal(auditCalls.length, 1)
+    assert.equal(host.stores.config.get().commander.rotation?.generation, 1)
+  } finally {
+    auditResponder = () => ({ status: 404, body: { error: 'session not found' } })
+  }
+})
+
+test('rotation: 手动绑定尊重 toolAudit=false（不发审计、照写标题、写回不丢字段）', async () => {
+  const host = await setup()
+  await seedBound(host, { enabled: true, toolAudit: false })
+  host.controller.nextSessionId = 'session-manual-no-audit'
+  host.agents.add('session-manual-no-audit')
+  auditCalls.length = 0
+  const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
+  assert.equal(response.status, 200)
+  assert.equal(auditCalls.length, 0)
+  assert.equal(host.controller.renames.length, 1)
   const config = host.stores.config.get()
-  assert.equal(config.commander.sessionId, 'session-manual')
+  assert.equal(config.commander.rotation?.toolAudit, false)
   assert.equal(config.commander.rotation?.generation, 3)
+})
+
+test('rotation: 手动绑定审计失败不阻断，标题照写', async () => {
+  const host = await setup()
+  await seedBound(host, { enabled: true })
+  host.controller.nextSessionId = 'session-manual-audit-fail'
+  host.agents.add('session-manual-audit-fail')
+  auditCalls.length = 0
+  auditResponder = () => ({ status: 500, body: { error: 'boom' } })
+  try {
+    const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
+    assert.equal(response.status, 200)
+    assert.equal(auditCalls.length, 1)
+    assert.equal(host.controller.renames.length, 1)
+    assert.equal(host.stores.config.get().commander.sessionId, 'session-manual-audit-fail')
+  } finally {
+    auditResponder = () => ({ status: 404, body: { error: 'session not found' } })
+  }
+})
+
+test('rotation: 手动绑定 rename 失败不阻断，审计照发', async () => {
+  const host = await setup()
+  await seedBound(host, { enabled: true })
+  host.controller.nextSessionId = 'session-manual-title-fail'
+  host.agents.add('session-manual-title-fail')
+  host.controller.failRename = new Error('title boom')
+  auditCalls.length = 0
+  const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
+  assert.equal(response.status, 200)
+  assert.equal(host.controller.renames.length, 0)
+  assert.equal(auditCalls.length, 1)
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-manual-title-fail')
+})
+
+test('rotation: 「选择已有会话」不设标题、不预置审计', async () => {
+  const host = await setup({ sessionCwd: '/tmp/a' })
+  await seedBound(host, { enabled: true })
+  auditCalls.length = 0
+  const response = await host.webServer.invoke('POST', '/commander/binding', {
+    mode: 'select',
+    workspaceId: 'ws-a',
+    sessionId: 'session-existing',
+  })
+  assert.equal(response.status, 200)
+  assert.equal(host.controller.renames.length, 0)
+  assert.equal(auditCalls.length, 0)
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-existing')
 })
 
 test('rotation: 配置校验（periodDays 1..7；generation 由 Host 管理；config 视图回显）', async () => {
@@ -300,9 +533,17 @@ test('rotation: 配置校验（periodDays 1..7；generation 由 Host 管理；co
   assert.equal(config.commander.rotation?.includeUserTail, false)
   assert.ok((config.commander.rotation?.generationStartedAt ?? 0) > 0)
   const view = await host.webServer.invoke('GET', '/commander/config')
-  const body = view.body as { config: { commander: { rotation: { enabled: boolean; periodDays: number } } } }
+  const body = view.body as { config: { commander: { rotation: { enabled: boolean; periodDays: number; toolAudit: boolean } } } }
   assert.equal(body.config.commander.rotation.enabled, true)
   assert.equal(body.config.commander.rotation.periodDays, 3)
+  // toolAudit 默认 true，可显式关闭并回显
+  assert.equal(body.config.commander.rotation.toolAudit, true)
+  const auditOff = await host.webServer.invoke('PUT', '/commander/config', { requestId: 'req_cfg_audit', commander: { rotation: { toolAudit: false } } })
+  assert.equal(auditOff.status, 200)
+  assert.equal(host.stores.config.get().commander.rotation?.toolAudit, false)
+  const auditBad = await host.webServer.invoke('PUT', '/commander/config', { requestId: 'req_cfg_audit_bad', commander: { rotation: { toolAudit: 'yes' } } })
+  assert.equal(auditBad.status, 400)
+  assert.equal((auditBad.body as { field: string }).field, 'commander.rotation.toolAudit')
 })
 
 test('rotation: 并发触发只换一次（一个 200、一个 409 rotation_busy）', async () => {

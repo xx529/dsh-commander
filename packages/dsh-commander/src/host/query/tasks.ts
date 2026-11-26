@@ -3,7 +3,6 @@
 import { TASK_STATUSES, type Priority, type TaskRecord, type TaskStatus } from '../schema.ts'
 import type { TaskLookup } from '../tasks/dependencies.ts'
 import { dependenciesMet, waitingFor } from '../tasks/dependencies.ts'
-import { taskIsStale } from '../board/service.ts'
 import { clipLine } from '../rotation/brief.ts'
 import { HOST_COLUMN_IDS, HOST_TRASH_STATUSES, hostBoardColumnOf } from './board-columns.ts'
 import { parseTimeBound } from './time-input.ts'
@@ -241,7 +240,6 @@ export interface TaskListRow {
   waitingFor?: string[]
   blockReason?: string
   acceptanceCount: number
-  stale: boolean
   createdAt: number
   updatedAt: number
   ageMinutes: number
@@ -276,7 +274,6 @@ export function buildTaskRow(input: {
     ...(waiting.length > 0 ? { waitingFor: waiting } : {}),
     ...(blockReason !== undefined ? { blockReason } : {}),
     acceptanceCount: task.acceptance.length,
-    stale: taskIsStale(task, now),
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
     ageMinutes: Math.max(0, Math.floor((now - task.updatedAt) / 60_000)),

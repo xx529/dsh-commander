@@ -2,9 +2,11 @@
 // 看板直接复用 DSH 页内的 BoardPage（五列泳道/拖拽/抽屉），对话复用 commander store。
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { BubbleApp } from './BubbleApp'
 import { createCommanderStore, connectionLabel } from './store'
 import { deriveCommanderBadge } from './approval'
 import { getShellBridge, shellBoot } from './shell-bridge'
+import { showsPanel } from './window-role'
 import { BoardPage } from './BoardPage'
 import { CommanderSettingsSection } from './SettingsSection'
 import { DICTIONARIES, fallbackTranslate } from './locales'
@@ -70,8 +72,9 @@ type Copy = (typeof COPY)['zh'] | (typeof COPY)['en']
 /** 窗口入口：带 `session` 参数时是只读会话窗口，否则是悬浮球/面板。 */
 export function WindowApp() {
   const boot = useMemo(() => shellBoot(), [])
+  if (boot.role === 'bubble') return <BubbleApp />
   if (boot.session !== '') return <SessionTranscriptApp sessionId={boot.session} />
-  return <FloatingApp />
+  return <FloatingApp boot={boot} />
 }
 
 interface ApprovalView {
@@ -103,8 +106,8 @@ interface QuestionBatchView {
   canAnswer?: boolean
 }
 
-/** 原生壳窗口根组件。 */
-function FloatingApp() {
+/** 原生壳窗口根组件；`role` 决定本窗口是常驻球还是面板。 */
+function FloatingApp({ boot }: { boot: ReturnType<typeof shellBoot> }) {
   const bridge = useMemo(() => getShellBridge(), [])
   const copy: Copy = COPY[bridge.locale]
   const t = useMemo(() => {
@@ -113,7 +116,8 @@ function FloatingApp() {
   }, [bridge.locale])
   const [store] = useState(() => createCommanderStore({ baseUrl: '' }))
   const view = useSyncExternalStore(store.subscribe, store.getSnapshot)
-  const [expanded, setExpanded] = useState(() => shellBoot().panel === true)
+  const role = boot.role
+  const [expanded, setExpanded] = useState(() => boot.panel === true)
   const [mode, setMode] = useState<'chat' | 'board'>('chat')
   const [text, setText] = useState('')
   const [approvals, setApprovals] = useState<ApprovalView[]>([])
@@ -128,6 +132,8 @@ function FloatingApp() {
   const pendingKey = pending === null ? '' : decisionIdOf(pending)
   const todoCount = (pending !== null && !dispatchSent ? 1 : 0) + approvals.length + questions.length
   const [dragging, setDragging] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [unread, setUnread] = useState(false)
   const drag = useRef<{ x: number; y: number; moved: boolean; toggle: boolean } | null>(null)
   const messagesEnd = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -138,6 +144,8 @@ function FloatingApp() {
   }, [store])
 
   useEffect(() => bridge.onModeChange(setExpanded), [bridge])
+  useEffect(() => bridge.onBallHover(setHovered), [bridge])
+  useEffect(() => bridge.onBallUnread(setUnread), [bridge])
 
   // ESC 全局收起：先关设置/抽屉，再收起面板（不依赖焦点在输入框）。
   useEffect(() => {
@@ -272,6 +280,8 @@ function FloatingApp() {
     if (expanded) return
     setExpanded(true)
     void bridge.setMode('panel')
+    // 球窗口只负责打开面板窗口，键盘焦点交给面板窗口自己。
+    if (role === 'ball') return
     // 展开后把键盘焦点交给输入框，ESC/输入无需先点一下。
     setTimeout(() => inputRef.current?.focus(), 220)
   }
@@ -359,18 +369,30 @@ function FloatingApp() {
     }).catch(() => {})
   }
 
-  if (!expanded) {
+  // 球窗口恒渲染球：面板打开时球仍然常驻，可再次点击收起（契约 §4）。
+  const panelVisible = showsPanel(role, expanded)
+
+  if (!panelVisible) {
     return (
       <button
         type="button"
-        className={`dshcn-ball${dragging ? ' is-dragging' : ''}`}
+        className={`dshcn-ball${dragging ? ' is-dragging' : ''}${hovered ? ' is-hover' : ''}${unread ? ' is-unread' : ''}`}
         data-bound={bound}
         data-busy={view.busy}
+        data-conn={view.connection}
         title={badgeCount > 0 ? `${badgeCount} ${copy.pending}` : copy.title}
         onPointerDown={(event) => beginDrag(event, true)}
       >
-        {badgeCount > 0 ? <span className="dshcn-badge">{badgeCount > 99 ? '99+' : badgeCount}</span> : <span className="dshcn-flag" aria-hidden="true" />}
-        <span className="dshcn-dot" data-phase={view.connection} />
+        <span className="dshcn-orb-surface" aria-hidden="true">
+          <span className="dshcn-core" />
+          <span className="dshcn-rim" />
+          <span className="dshcn-sonar dshcn-sonar-1" />
+          <span className="dshcn-sonar dshcn-sonar-2" />
+        </span>
+        <span className="dshcn-orbit" aria-hidden="true">
+          <span className="dshcn-satellite" />
+        </span>
+        {badgeCount > 0 ? <span className="dshcn-badge">{badgeCount > 99 ? '99+' : badgeCount}</span> : null}
       </button>
     )
   }

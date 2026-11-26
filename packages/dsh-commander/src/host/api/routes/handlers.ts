@@ -16,8 +16,7 @@ import { resolveRotation, patchRotation } from '../../rotation/config.ts'
 import { RotationError } from '../../rotation/service.ts'
 import { collectWorkspaceSessions } from '../../dispatch/candidates.ts'
 import { isSessionLive, readSessionsByIds } from '../../session/session-records.ts'
-import { taskIsStale } from '../../board/service.ts'
-import { dependenciesMet, isReady, waitingFor } from '../../tasks/dependencies.ts'
+import { dependenciesMet, hasPendingDependents, isReady, waitingFor } from '../../tasks/dependencies.ts'
 
 export interface JsonResult { status: number; body: unknown }
 
@@ -30,6 +29,7 @@ export async function snapshotOf(deps: ApiDeps): Promise<CommanderSnapshot> {
     binding: deps.binding.view(),
     messages: deps.messages.snapshot(),
     commanderBusy: deps.getStatus().busy,
+    commanderActivity: deps.getStatus().activity,
     rev: deps.sse.rev,
     ...(deps.getPendingDispatch !== undefined ? { pendingDispatch: deps.getPendingDispatch() } : {}),
     ...(deps.getMetrics !== undefined ? { metrics: deps.getMetrics() } : {}),
@@ -58,6 +58,7 @@ function dependencyViewOf(deps: ApiDeps, task: import('../../schema.ts').TaskRec
   dependsOn: string[]
   waitingFor: string[]
   ready: boolean
+  hasPendingDependents: boolean
   pendingDispatch: boolean
 } {
   const lookup = (id: string): import('../../schema.ts').TaskRecord | undefined => deps.stores.tasks.get(id)
@@ -65,6 +66,7 @@ function dependencyViewOf(deps: ApiDeps, task: import('../../schema.ts').TaskRec
     dependsOn: task.dependsOn ?? [],
     waitingFor: waitingFor(task, lookup),
     ready: isReady(task, lookup),
+    hasPendingDependents: hasPendingDependents(deps.stores.tasks.list(), task.id),
     pendingDispatch: pendingDispatchTaskId(deps) === task.id,
   }
 }
@@ -113,6 +115,8 @@ export async function handleTaskGet(deps: ApiDeps, taskId: string): Promise<Json
         lastActivityAt: task.lastActivityAt,
         version: task.version,
         ...dependencyView,
+        ...(task.acceptNote !== undefined ? { acceptNote: task.acceptNote } : {}),
+        ...(task.acceptedBy !== undefined ? { acceptedBy: task.acceptedBy } : {}),
         ...(task.archivedFrom !== undefined ? { archivedFrom: task.archivedFrom } : {}),
       },
       acceptance: task.acceptance,
@@ -137,7 +141,6 @@ export async function handleTaskGet(deps: ApiDeps, taskId: string): Promise<Json
       timeline: task.timeline,
       sessions,
       boardEdits: deps.boardService?.detailBoardEdits(task.id) ?? [],
-      stale: taskIsStale(task, nowOf(deps)),
       ...(task.archivedAt !== undefined ? { archivedAt: task.archivedAt } : {}),
       rev: deps.sse.rev,
     },
@@ -149,7 +152,7 @@ function boardServiceOf(deps: ApiDeps) {
   return deps.boardService
 }
 
-function taskSummary(deps: ApiDeps, task: import('../../schema.ts').TaskRecord, now: number) {
+function taskSummary(deps: ApiDeps, task: import('../../schema.ts').TaskRecord) {
   const dependencyView = dependencyViewOf(deps, task)
   return {
     id: task.id,
@@ -171,7 +174,8 @@ function taskSummary(deps: ApiDeps, task: import('../../schema.ts').TaskRecord, 
     lastActivityAt: task.lastActivityAt,
     version: task.version,
     ...dependencyView,
-    stale: taskIsStale(task, now),
+    ...(task.acceptNote !== undefined ? { acceptNote: task.acceptNote } : {}),
+    ...(task.acceptedBy !== undefined ? { acceptedBy: task.acceptedBy } : {}),
     ...(task.archivedAt !== undefined ? { archivedAt: task.archivedAt } : {}),
   }
 }
@@ -189,7 +193,7 @@ export async function handleBoardPatch(deps: ApiDeps, taskId: string, body: unkn
     status: 200,
     body: {
       ok: true,
-      task: taskSummary(deps, result.task, nowOf(deps)),
+      task: taskSummary(deps, result.task),
       boardEdit: result.boardEdit,
       duplicate: result.duplicate,
       rev: deps.sse.rev,
@@ -208,17 +212,54 @@ export async function handleTaskAction(deps: ApiDeps, taskId: string, action: 'a
     if ('invalid' in result && result.invalid) throw new ApiError('invalid_request', result.message)
     throw new ApiError('conflict', result.message)
   }
-  return { status: 200, body: { ok: true, task: taskSummary(deps, result.task, nowOf(deps)), duplicate: result.duplicate, rev: deps.sse.rev } }
+  return { status: 200, body: { ok: true, task: taskSummary(deps, result.task), duplicate: result.duplicate, rev: deps.sse.rev } }
 }
 
-/** GET /commander/archive?limit=&cursor=（回收站列表，只读）。 */
-export async function handleArchiveList(deps: ApiDeps, limitRaw?: string, cursorRaw?: string): Promise<JsonResult> {
+/**
+ * GET /commander/archive?limit=&cursor=&q=&status=&workspaceId=&from=&to=
+ * （回收站列表，只读；m2m3-contract-patch §2.5.1）。
+ */
+export async function handleArchiveList(
+  deps: ApiDeps,
+  limitRaw?: string,
+  cursorRaw?: string,
+  qRaw?: string,
+  statusRaw?: string,
+  workspaceIdRaw?: string,
+  fromRaw?: string,
+  toRaw?: string,
+): Promise<JsonResult> {
   const limit = limitRaw === undefined || limitRaw === '' ? 50 : Number(limitRaw)
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ApiError('invalid_request', 'limit must be an integer in 1..100', { field: 'limit' })
   const cursor = cursorRaw === undefined || cursorRaw === '' ? NaN : Number(cursorRaw)
   if (cursorRaw !== undefined && cursorRaw !== '' && !Number.isFinite(cursor)) throw new ApiError('invalid_request', 'cursor must be a number', { field: 'cursor' })
-  const at = nowOf(deps)
-  const result = boardServiceOf(deps).listArchive({ limit, ...(Number.isFinite(cursor) ? { cursor } : {}) })
+  const q = (qRaw ?? '').trim()
+  if (q.length > 100) throw new ApiError('invalid_request', 'q must be at most 100 characters', { field: 'q' })
+  const status = statusRaw === undefined || statusRaw === '' ? undefined : statusRaw
+  if (status !== undefined && status !== 'archived' && status !== 'cancelled') {
+    throw new ApiError('invalid_request', 'status must be archived or cancelled', { field: 'status' })
+  }
+  const workspaceId = (workspaceIdRaw ?? '').trim()
+  const parseMs = (raw: string | undefined, field: 'from' | 'to'): number | undefined => {
+    if (raw === undefined || raw === '') return undefined
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < 0) throw new ApiError('invalid_request', `${field} must be a non-negative epoch ms`, { field })
+    return value
+  }
+  const from = parseMs(fromRaw, 'from')
+  const to = parseMs(toRaw, 'to')
+  if (from !== undefined && to !== undefined && from >= to) {
+    throw new ApiError('invalid_request', 'from must be smaller than to', { field: 'from' })
+  }
+  const result = boardServiceOf(deps).listArchive({
+    limit,
+    ...(Number.isFinite(cursor) ? { cursor } : {}),
+    ...(q !== '' ? { q } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(workspaceId !== '' ? { workspaceId } : {}),
+    ...(from !== undefined ? { from } : {}),
+    ...(to !== undefined ? { to } : {}),
+  })
   return {
     status: 200,
     body: {
@@ -229,12 +270,16 @@ export async function handleArchiveList(deps: ApiDeps, limitRaw?: string, cursor
         status: task.status,
         workspaceId: task.workspaceId,
         priority: task.priority,
+        round: task.round ?? 1,
+        sessionCount: task.assignments.length,
         updatedAt: task.updatedAt,
         lastActivityAt: task.lastActivityAt,
         ...(task.archivedAt !== undefined ? { archivedAt: task.archivedAt } : {}),
-        stale: taskIsStale(task, at),
       })),
       nextCursor: result.nextCursor,
+      total: result.total,
+      summary: result.summary,
+      months: result.months,
       rev: deps.sse.rev,
     },
   }
@@ -338,10 +383,12 @@ export function configView(config: ConfigRecord): Record<string, unknown> {
       sessionId: config.commander.sessionId,
       model: config.commander.model,
       ...(config.commander.agentPreset !== undefined ? { agentPreset: config.commander.agentPreset } : {}),
+      allowCommanderAccept: config.commander.allowCommanderAccept !== false,
       rotation: {
         enabled: rotation.enabled,
         periodDays: rotation.periodDays,
         includeUserTail: rotation.includeUserTail,
+        toolAudit: rotation.toolAudit,
         generation: rotation.generation,
         generationStartedAt: rotation.generationStartedAt,
       },
@@ -379,6 +426,7 @@ export async function handleConfigPut(deps: ApiDeps, body: unknown): Promise<Jso
         ...current.commander,
         ...(patch.commander.model !== undefined ? { model: { ...current.commander.model, ...patch.commander.model } } : {}),
         ...(patch.commander.agentPreset !== undefined ? { agentPreset: patch.commander.agentPreset } : {}),
+        ...(patch.commander.allowCommanderAccept !== undefined ? { allowCommanderAccept: patch.commander.allowCommanderAccept } : {}),
       }
       if (patch.commander.rotation !== undefined) {
         const currentRotation = current.commander.rotation
@@ -488,12 +536,15 @@ export async function handleMessagePost(deps: ApiDeps, body: unknown): Promise<J
 }
 
 
-/** POST /commander/tasks/:id/accept（M3 人专用：仅 review→done）。 */
-export async function handleTaskAccept(deps: ApiDeps, taskId: string): Promise<JsonResult> {
+/** POST /commander/tasks/:id/accept（人专用：仅 review→done；body.note = 可选交接说明）。 */
+export async function handleTaskAccept(deps: ApiDeps, taskId: string, body?: unknown): Promise<JsonResult> {
   if (deps.taskActions === undefined) throw new ApiError('internal', 'task actions are unavailable')
-  const result = await deps.taskActions.accept(taskId)
+  const input = typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
+  if (input.note !== undefined && typeof input.note !== 'string') throw new ApiError('invalid_request', 'note must be a string')
+  const note = typeof input.note === 'string' ? input.note : undefined
+  const result = await deps.taskActions.accept(taskId, note !== undefined ? { note } : {})
   if (!result.ok) throw new ApiError(result.kind, result.message)
-  return { status: 200, body: { ok: true, task: taskSummary(deps, result.task, nowOf(deps)), duplicate: result.duplicate, rev: deps.sse.rev } }
+  return { status: 200, body: { ok: true, task: taskSummary(deps, result.task), duplicate: result.duplicate, rev: deps.sse.rev } }
 }
 
 /** POST /commander/tasks/:id/cancel（人专用：非终态→cancelled；先停会话，失败不落状态）。 */
@@ -501,7 +552,7 @@ export async function handleTaskCancel(deps: ApiDeps, taskId: string): Promise<J
   const result = await boardServiceOf(deps).cancelTask(taskId)
   if (!result.ok) throw new ApiError('conflict', result.message)
   deps.onTaskSettled?.(taskId)
-  return { status: 200, body: { ok: true, task: taskSummary(deps, result.task, nowOf(deps)), duplicate: result.duplicate, rev: deps.sse.rev } }
+  return { status: 200, body: { ok: true, task: taskSummary(deps, result.task), duplicate: result.duplicate, rev: deps.sse.rev } }
 }
 
 /** POST /commander/tasks/:id/continue（M5 人专用：只写批注并通知指挥官，不改状态）；/rework 为兼容别名。 */
@@ -512,7 +563,7 @@ export async function handleTaskContinue(deps: ApiDeps, taskId: string, body: un
   if (!result.ok) throw new ApiError(result.kind, result.message)
   return {
     status: 200,
-    body: { ok: true, task: taskSummary(deps, result.task, nowOf(deps)), notified: result.notified, duplicate: result.duplicate, rev: deps.sse.rev },
+    body: { ok: true, task: taskSummary(deps, result.task), notified: result.notified, duplicate: result.duplicate, rev: deps.sse.rev },
   }
 }
 

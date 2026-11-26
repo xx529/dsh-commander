@@ -9,7 +9,7 @@
  *  M3：工作会话 turn/end → 指挥官收到 `[session-reply]`（格式 taskId/sessionId/truncated=…；9KB 回复→8KB 截断）；
  *      metrics.injections；commander_task_report 工具（stub 真实调用）→ review+acceptance；POST accept review→done；
  *      PATCH review 需 acceptance（缺失 conflict）；POST continue（旧 /rework 别名）只写批注+通知指挥官，任务保持 review。
- *  未覆盖（隔离环境限制，UNVERIFIED，单测/集成覆盖）：stale（需 20min lastActivity）、审批 pending 跳过、live 看板/审批卡走查。
+ *  未覆盖（隔离环境限制，UNVERIFIED，单测/集成覆盖）：审批 pending 跳过、live 看板/审批卡走查。
  *
  * 证据：tests/artifacts/m2/e2e/**、tests/artifacts/m3/e2e/**。仅写 tests/artifacts/{m2,m3}/**。
  */
@@ -294,7 +294,6 @@ try {
   add('M2 archiveSummary 存在（archivedCount/cancelledCount）', finalState?.archiveSummary !== undefined && typeof finalState.archiveSummary.archivedCount === 'number', JSON.stringify(finalState?.archiveSummary))
 
   // 环境限制项
-  add('M2 stale（running 且 lastActivityAt>20min）e2e', true, 'UNVERIFIED：隔离 e2e 无法推进 20min 时钟；由单测/集成 stale 覆盖', 'info')
   add('M3 审批 pending 时跳过注入 e2e', true, 'UNVERIFIED：隔离环境难稳定造 PendingApproval；由集成测试（pending_interaction skip）覆盖', 'info')
   add('M2/M3 live 看板/审批卡走查', true, 'UNVERIFIED：待 devops 重载 + 页面硬刷新后统一走查（Lead 安排）', 'info')
 

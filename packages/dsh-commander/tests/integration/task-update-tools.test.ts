@@ -74,6 +74,32 @@ test('commander_task_get returns latest version/status/dependsOn/waitingFor/read
   assert.equal(result.evidenceInsufficientCount, 1)
 })
 
+test('commander_task_get 暴露写 prompt 所需的任务定义与上一轮信息', async () => {
+  const { specs, exec } = await setup(baseTask({
+    goal: '写清目标',
+    acceptance: [
+      { id: 'acc_1', text: '验收一', verify: 'pnpm test', evidence: 'out.txt', source: 'commander', state: 'evidence_present' },
+      { id: 'acc_2', text: '验收二', source: 'commander', state: 'insufficient' },
+    ],
+    reportSummary: { text: '上一轮结论', at: 9, round: 1 },
+    pendingInstruction: { text: '看板批注原文', at: 8, source: 'rework' },
+    acceptanceHistory: [{ round: 1, at: 7, items: [{ id: 'acc_0', text: '历史验收', source: 'commander', state: 'evidence_present' }], reportSummary: { text: '历史结论', at: 7, round: 1 } }],
+  }))
+  const result = (await specs.commander_task_get.execute({ taskId: 'task_u' }, exec)) as Record<string, unknown>
+  assert.equal(result.goal, '写清目标')
+  assert.deepEqual(result.acceptance, [
+    { id: 'acc_1', text: '验收一', verify: 'pnpm test', evidence: 'out.txt', state: 'evidence_present' },
+    { id: 'acc_2', text: '验收二', state: 'insufficient' },
+  ])
+  assert.deepEqual(result.reportSummary, { text: '上一轮结论', at: 9, round: 1 })
+  assert.deepEqual(result.pendingInstruction, { text: '看板批注原文', at: 8 })
+  const history = result.acceptanceHistory as Array<Record<string, unknown>>
+  assert.equal(history.length, 1)
+  assert.equal(history[0]?.round, 1)
+  assert.deepEqual((history[0]?.items as Array<Record<string, unknown>>)[0], { id: 'acc_0', text: '历史验收', state: 'evidence_present' })
+  assert.deepEqual(history[0]?.reportSummary, { text: '历史结论', at: 7, round: 1 })
+})
+
 test('commander_task_update rejects stale revision and raw status without writing', async () => {
   const { stores, specs, exec } = await setup()
   const stale = (await specs.commander_task_update.execute({ taskId: 'task_u', expectedRevision: 2, action: 'edit', title: 'new' }, exec)) as { ok: boolean; code: string }

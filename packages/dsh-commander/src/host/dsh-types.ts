@@ -86,6 +86,8 @@ export interface AgentsService {
 
 export interface SessionControllerService {
   create?(request: Record<string, unknown>): Promise<{ sessionId?: string; id?: string }>
+  /** 显式用户标题（源='user'，钉住标题、不覆盖）；换任后用于给新会话落日期标题。 */
+  rename?(request: { sessionId: string; title: string }): Promise<{ title?: string; seq?: number }>
   selectModel?(request: Record<string, unknown>): Promise<unknown>
   prompt?(request: Record<string, unknown>, signal?: unknown): Promise<{ accepted?: boolean; queued?: boolean; error?: { code?: string; message?: string } }>
   cancel?(request: Record<string, unknown>): Promise<unknown>

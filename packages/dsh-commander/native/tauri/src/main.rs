@@ -26,9 +26,19 @@ use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalP
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const PROTOCOL: u32 = 1;
-const BALL_SIZE: f64 = 56.0;
+const BALL_SIZE: f64 = 76.0;
 const EDGE_MARGIN: f64 = 8.0;
 const TOP_MARGIN: f64 = 28.0;
+/// 常驻球窗口（与历史版本同名，位置文件/集合行为不变）。
+const BALL_LABEL: &str = "main";
+/// 独立面板窗口：打开面板时显示，收起时隐藏；球窗口始终保留。
+const PANEL_LABEL: &str = "panel";
+const PANEL_WIDTH: f64 = 420.0;
+const PANEL_HEIGHT: f64 = 660.0;
+/// 独立气泡窗口：click-through、不抢焦点；只在指挥官忙碌/完成时出现。
+const BUBBLE_LABEL: &str = "bubble";
+const BUBBLE_WIDTH: f64 = 336.0;
+const BUBBLE_HEIGHT: f64 = 76.0;
 
 // ---------------------------------------------------------------- 环境与状态
 
@@ -86,6 +96,17 @@ fn default_state_dir() -> PathBuf {
 struct AppState {
     config: Config,
     panel_open: AtomicBool,
+    /// 面板窗口页面是否加载完成；未完成时 set_mode 不 show（由 on_page_load 补显示）。
+    panel_ready: AtomicBool,
+    /// 气泡窗口页面是否加载完成、当前是否有活动、是否正在被展示。
+    bubble_ready: AtomicBool,
+    bubble_active: AtomicBool,
+    /// 球悬停高亮 + 停留 1.5s 自动唤起快捷输入。
+    ball_hover: AtomicBool,
+    quick_open: AtomicBool,
+    /// 光标离开过球之后才重新允许自动唤起，避免关掉输入后原地反复弹。
+    quick_armed: AtomicBool,
+    hover_since: Mutex<Option<Instant>>,
     last_save: Mutex<Instant>,
     /// 球的逻辑坐标：展开面板时记住，收起时原样恢复（否则球会漂到面板左上角）。
     ball_pos: Mutex<Option<(f64, f64)>>,
@@ -203,6 +224,13 @@ fn main() {
     let state = AppState {
         config: config.clone(),
         panel_open: AtomicBool::new(false),
+        panel_ready: AtomicBool::new(false),
+        bubble_ready: AtomicBool::new(false),
+        bubble_active: AtomicBool::new(false),
+        ball_hover: AtomicBool::new(false),
+        quick_open: AtomicBool::new(false),
+        quick_armed: AtomicBool::new(true),
+        hover_since: Mutex::new(None),
         last_save: Mutex::new(Instant::now() - Duration::from_secs(5)),
         ball_pos: Mutex::new(None),
         expanded_frames: Mutex::new(HashMap::new()),
@@ -216,6 +244,14 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             create_window(app, &setup_config)?;
+            if let Err(error) = create_panel_window(app, &setup_config) {
+                setup_config.log(&format!("panel window creation failed: {error}"));
+            }
+            if let Err(error) = create_bubble_window(app, &setup_config) {
+                setup_config.log(&format!("bubble window creation failed: {error}"));
+            }
+            #[cfg(target_os = "macos")]
+            spawn_hover_watcher(app.handle().clone());
             register_hotkey(app, &setup_config);
             spawn_stdin_reader(app.handle().clone());
             spawn_parent_watchdog(app.handle().clone(), setup_config.parent_pid);
@@ -224,12 +260,12 @@ fn main() {
                 platform: env::consts::OS.to_string(),
                 arch: env::consts::ARCH.to_string(),
                 pid: std::process::id(),
-                capabilities: vec!["ball".into(), "panel".into(), "hotkey".into()],
+                capabilities: vec!["ball".into(), "panel".into(), "bubble".into(), "hotkey".into(), "panel-window".into()],
                 hotkey: Some(setup_config.hotkey.clone()),
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![set_mode, open_session_window, open_external, quit])
+        .invoke_handler(tauri::generate_handler![set_mode, set_bubble, set_quick_input, set_ball_unread, open_session_window, open_external, quit])
         .run(tauri::generate_context!());
     if let Err(error) = result {
         eprintln!("[commander-shell] fatal: {error}");
@@ -268,15 +304,24 @@ fn parse_hotkey(value: &str) -> Option<Shortcut> {
 
 // ---------------------------------------------------------------- 窗口
 
+/// 在窗口 URL 后追加查询参数（token 已在原 URL 里）。
+fn with_query(base: &str, extra: &str) -> String {
+    let separator = if base.contains('?') { '&' } else { '?' };
+    format!("{base}{separator}{extra}")
+}
+
+/// 常驻球窗口：透明置顶 76×76（球 60，四周 8px 透明边给高光/rim/hover）；点击只控制面板窗口，自身永不隐藏。
 fn create_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
-    let url = config.window_url.parse().map_err(|error| tauri::Error::InvalidUrl(error))?;
+    let url = with_query(&config.window_url, "role=ball")
+        .parse()
+        .map_err(|error| tauri::Error::InvalidUrl(error))?;
     let scale = app.primary_monitor().ok().flatten().map(|monitor| monitor.scale_factor()).unwrap_or(1.0);
     // 重启后固定回主屏右下：旧的 window.json 可能指向已断开的外接屏/屏外坐标，
     // 导致球 visible=true 但落在不可见区域。
     let (x, y) = default_ball_position(app, scale);
     let page_app = app.handle().clone();
     let load_app = page_app.clone();
-    let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+    let window = WebviewWindowBuilder::new(app, BALL_LABEL, WebviewUrl::External(url))
         .title("Commander")
         .inner_size(BALL_SIZE, BALL_SIZE)
         .position(x, y)
@@ -291,7 +336,7 @@ fn create_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
         .visible(false)
         .on_page_load(move |_webview, payload| {
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
-                if let Some(win) = load_app.get_webview_window("main") {
+                if let Some(win) = load_app.get_webview_window(BALL_LABEL) {
                     let _ = win.set_shadow(false);
                     let _ = win.show();
                 }
@@ -313,7 +358,7 @@ fn create_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
     std::thread::spawn(move || {
         for attempt in 0..6 {
             std::thread::sleep(Duration::from_millis(1_000));
-            if let Some(win) = fallback.get_webview_window("main") {
+            if let Some(win) = fallback.get_webview_window(BALL_LABEL) {
                 if !win.is_visible().unwrap_or(false) {
                     let _ = win.show();
                 }
@@ -325,23 +370,271 @@ fn create_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(_) => {
             update_ball_pos(&handle);
-            record_expanded_frame(&handle);
             save_window(&handle);
+            if let Some(bubble) = handle.get_webview_window(BUBBLE_LABEL) {
+                if bubble.is_visible().unwrap_or(false) {
+                    let _ = position_bubble(&handle);
+                }
+            }
         }
         WindowEvent::Resized(_) => {
-            record_expanded_frame(&handle);
             save_window(&handle);
         }
         WindowEvent::Focused(_) => {
             let _ = emit_visibility(&handle);
         }
         WindowEvent::CloseRequested { api, .. } => {
-            // 关闭窗口 = 退出壳，由 Host supervisor 决定是否重启。
+            // 关闭球窗口 = 退出壳，由 Host supervisor 决定是否重启。
             api.prevent_close();
             handle.exit(0);
         }
         _ => {}
     });
+    Ok(())
+}
+
+/// 面板窗口：页面加载完成前保持隐藏（set_mode 只记录 panel_open），首次打开由 on_page_load 补 show。
+fn create_panel_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
+    let url = with_query(&config.window_url, "panel=1&role=panel")
+        .parse()
+        .map_err(|error| tauri::Error::InvalidUrl(error))?;
+    let load_app = app.handle().clone();
+    let window = WebviewWindowBuilder::new(app, PANEL_LABEL, WebviewUrl::External(url))
+        .title("Commander")
+        .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(false)
+        .skip_taskbar(true)
+        .resizable(true)
+        .shadow(false)
+        .focused(false)
+        .accept_first_mouse(true)
+        .visible(false)
+        .on_page_load(move |_webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                let ready = load_app.state::<AppState>();
+                ready.panel_ready.store(true, Ordering::SeqCst);
+                if let Some(win) = load_app.get_webview_window(PANEL_LABEL) {
+                    let _ = win.set_shadow(false);
+                    if ready.panel_open.load(Ordering::SeqCst) {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+                load_app.state::<AppState>().config.log("panel page loaded");
+            }
+        })
+        .build()?;
+    let _ = window.set_shadow(false);
+    #[cfg(target_os = "macos")]
+    enable_all_spaces(&window);
+    let handle = app.handle().clone();
+    window.on_window_event(move |event| match event {
+        WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+            record_expanded_frame(&handle);
+        }
+        WindowEvent::Focused(_) => {
+            let _ = emit_visibility(&handle);
+        }
+        WindowEvent::CloseRequested { api, .. } => {
+            // 关闭面板窗口 = 收起面板；球窗口继续驻留，壳不退出。
+            api.prevent_close();
+            let _ = set_window_mode(&handle, "ball");
+        }
+        _ => {}
+    });
+    Ok(())
+}
+
+/// 气泡窗口：独立透明窗，click-through，不抢焦点；页面加载完成前保持隐藏。
+fn create_bubble_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
+    let url = with_query(&config.window_url, "role=bubble")
+        .parse()
+        .map_err(|error| tauri::Error::InvalidUrl(error))?;
+    let load_app = app.handle().clone();
+    let window = WebviewWindowBuilder::new(app, BUBBLE_LABEL, WebviewUrl::External(url))
+        .title("Commander")
+        .inner_size(BUBBLE_WIDTH, BUBBLE_HEIGHT)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .focused(false)
+        .accept_first_mouse(false)
+        .visible(false)
+        .on_page_load(move |_webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                if let Some(win) = load_app.get_webview_window(BUBBLE_LABEL) {
+                    let _ = win.set_shadow(false);
+                    let _ = win.set_ignore_cursor_events(true);
+                }
+                let state = load_app.state::<AppState>();
+                state.bubble_ready.store(true, Ordering::SeqCst);
+                let _ = show_bubble(&load_app);
+                state.config.log("bubble page loaded");
+            }
+        })
+        .build()?;
+    let _ = window.set_shadow(false);
+    let _ = window.set_ignore_cursor_events(true);
+    #[cfg(target_os = "macos")]
+    enable_all_spaces(&window);
+    let handle = app.handle().clone();
+    window.on_window_event(move |event| match event {
+        WindowEvent::CloseRequested { api, .. } => {
+            api.prevent_close();
+            if let Some(win) = handle.get_webview_window(BUBBLE_LABEL) {
+                let _ = win.hide();
+            }
+        }
+        _ => {}
+    });
+    Ok(())
+}
+
+/// 在球旁边定位气泡窗：优先放在空间足够的一侧，贴边自动翻转，垂直与球心对齐。
+fn position_bubble(app: &AppHandle) -> Result<(), String> {
+    let Some(ball) = app.get_webview_window(BALL_LABEL) else { return Ok(()) };
+    let Some(bubble) = app.get_webview_window(BUBBLE_LABEL) else { return Ok(()) };
+    let Ok(scale) = ball.scale_factor() else { return Ok(()) };
+    let Ok(position) = ball.outer_position() else { return Ok(()) };
+    let Ok(size) = ball.outer_size() else { return Ok(()) };
+    let ball_pos = position.to_logical::<f64>(scale);
+    let ball_size = size.to_logical::<f64>(scale);
+    let (mx, my, mw, mh) = monitor_logical_rect(&ball, scale).unwrap_or((0.0, 0.0, 1280.0, 800.0));
+    let margin = 8.0;
+    let left_space = ball_pos.x - mx;
+    let right_space = mx + mw - (ball_pos.x + ball_size.width);
+    let fits_left = left_space >= BUBBLE_WIDTH + margin;
+    let fits_right = right_space >= BUBBLE_WIDTH + margin;
+    let prefer_left = ball_pos.x + ball_size.width / 2.0 > mx + mw / 2.0;
+    let on_left = if prefer_left { fits_left || !fits_right } else { !fits_right && fits_left };
+    let x = if on_left { ball_pos.x - BUBBLE_WIDTH } else { ball_pos.x + ball_size.width };
+    let y = ball_pos.y + (ball_size.height - BUBBLE_HEIGHT) / 2.0;
+    let max_x = (mx + mw - BUBBLE_WIDTH - margin).max(mx + margin);
+    let max_y = (my + mh - BUBBLE_HEIGHT - margin).max(my + margin);
+    let x = x.clamp(mx + margin, max_x);
+    let y = y.clamp(my + margin, max_y);
+    bubble
+        .set_position(LogicalPosition::new(x, y))
+        .map_err(|error| error.to_string())?;
+    let _ = app.emit_to(BUBBLE_LABEL, "commander:bubble-side", if on_left { "left" } else { "right" });
+    Ok(())
+}
+
+/// 悬停高亮 + 停留 0.8s 自动唤起快捷输入。
+///
+/// 球窗是 non-key 的 accessory 窗口，WKWebView 不会稳定收到 mouseMoved，CSS :hover
+/// 要等第一次点击后才生效。这里用主线程轮询 NSEvent::mouseLocation 和 NSWindow.frame，
+/// 自己算光标是否在球圆内，再通过 Tauri event 驱动页面样式；不依赖窗口焦点。
+#[cfg(target_os = "macos")]
+fn spawn_hover_watcher(app: AppHandle) {
+    use objc2_app_kit::{NSEvent, NSWindow};
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(80));
+        let handle = app.clone();
+        if app
+            .run_on_main_thread(move || {
+                let Some(window) = handle.get_webview_window(BALL_LABEL) else { return };
+                let Ok(pointer) = window.ns_window() else { return };
+                let ns = pointer as *mut NSWindow;
+                let frame = unsafe { (*ns).frame() };
+                let mouse = NSEvent::mouseLocation();
+                let cx = frame.origin.x + frame.size.width / 2.0;
+                let cy = frame.origin.y + frame.size.height / 2.0;
+                let radius = BALL_SIZE / 2.0 - 8.0; // 球体 60px，不含窗口 8px inset
+                let inside = (mouse.x - cx).powi(2) + (mouse.y - cy).powi(2) <= radius * radius;
+                let state = handle.state::<AppState>();
+                let previous = state.ball_hover.swap(inside, Ordering::SeqCst);
+                if previous != inside {
+                    let _ = handle.emit_to(BALL_LABEL, "commander:ball-hover", inside);
+                    // 气泡窗也要知道，用于「空输入 + 光标离开球」时自动收起。
+                    let _ = handle.emit_to(BUBBLE_LABEL, "commander:ball-hover", inside);
+                }
+                if !inside {
+                    if let Ok(mut since) = state.hover_since.lock() {
+                        *since = None;
+                    }
+                    state.quick_armed.store(true, Ordering::SeqCst);
+                    return;
+                }
+                if !state.quick_armed.load(Ordering::SeqCst)
+                    || state.quick_open.load(Ordering::SeqCst)
+                    || state.panel_open.load(Ordering::SeqCst)
+                {
+                    return;
+                }
+                let due = {
+                    let Ok(mut since) = state.hover_since.lock() else { return };
+                    let now = Instant::now();
+                    let started = since.get_or_insert(now);
+                    now.duration_since(*started) >= Duration::from_millis(800)
+                };
+                if due {
+                    if let Ok(mut since) = state.hover_since.lock() {
+                        *since = None;
+                    }
+                    state.quick_armed.store(false, Ordering::SeqCst);
+                    let _ = show_quick_input(&handle);
+                }
+            })
+            .is_err()
+        {
+            break;
+        }
+    });
+}
+
+/// 快捷输入复用气泡窗：同一个 336×76 透明窗，切到可交互/可聚焦状态。
+fn show_quick_input(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if state.panel_open.load(Ordering::SeqCst) || state.quick_open.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    if !state.bubble_ready.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let Some(window) = app.get_webview_window(BUBBLE_LABEL) else { return Ok(()) };
+    state.quick_open.store(true, Ordering::SeqCst);
+    if let Err(error) = position_bubble(app) {
+        state.quick_open.store(false, Ordering::SeqCst);
+        return Err(error);
+    }
+    let _ = window.set_ignore_cursor_events(false);
+    window.show().map_err(|error| error.to_string())?;
+    let _ = window.set_focus();
+    let _ = app.emit_to(BUBBLE_LABEL, "commander:quick-input", true);
+    Ok(())
+}
+
+fn close_quick_input(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let was_open = state.quick_open.swap(false, Ordering::SeqCst);
+    if let Some(window) = app.get_webview_window(BUBBLE_LABEL) {
+        let _ = window.set_ignore_cursor_events(true);
+        let _ = window.hide();
+    }
+    if was_open {
+        let _ = app.emit_to(BUBBLE_LABEL, "commander:quick-input", false);
+    }
+    Ok(())
+}
+
+fn show_bubble(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if !state.bubble_active.load(Ordering::SeqCst)
+        || !state.bubble_ready.load(Ordering::SeqCst)
+        || state.panel_open.load(Ordering::SeqCst)
+    {
+        return Ok(());
+    }
+    let Some(window) = app.get_webview_window(BUBBLE_LABEL) else { return Ok(()) };
+    position_bubble(app)?;
+    window.show().map_err(|error| error.to_string())?;
+    let _ = window.set_ignore_cursor_events(true);
     Ok(())
 }
 
@@ -363,34 +656,8 @@ fn enable_all_spaces(window: &WebviewWindow) {
     }
 }
 
-/// 把球限制在某个当前可见显示器内；保存的坐标来自旧显示器/已断开的外接屏时回主屏右下。
-fn clamp_ball_position(app: &AppHandle, x: f64, y: f64, scale: f64) -> (f64, f64) {
-    let ball = BALL_SIZE;
-    if let Ok(monitors) = app.available_monitors() {
-        for monitor in monitors {
-            let monitor_scale = monitor.scale_factor();
-            let position = monitor.position();
-            let size = monitor.size();
-            let mx = position.x as f64 / monitor_scale;
-            let my = position.y as f64 / monitor_scale;
-            let mw = size.width as f64 / monitor_scale;
-            let mh = size.height as f64 / monitor_scale;
-            // 中心点落在该显示器内即视为可见，再夹到安全边距。
-            let center_x = x + ball / 2.0;
-            let center_y = y + ball / 2.0;
-            if center_x >= mx && center_x <= mx + mw && center_y >= my && center_y <= my + mh {
-                return (
-                    x.clamp(mx + EDGE_MARGIN, (mx + mw - ball - EDGE_MARGIN).max(mx + EDGE_MARGIN)),
-                    y.clamp(my + TOP_MARGIN, (my + mh - ball - EDGE_MARGIN).max(my + TOP_MARGIN)),
-                );
-            }
-        }
-    }
-    default_ball_position_handle(app, scale)
-}
-
 fn write_window_debug(app: &AppHandle, stage: &str) {
-    let Some(window) = app.get_webview_window("main") else { return };
+    let Some(window) = app.get_webview_window(BALL_LABEL) else { return };
     let position = window.outer_position().ok();
     let size = window.outer_size().ok();
     let visible = window.is_visible().unwrap_or(false);
@@ -410,19 +677,6 @@ fn write_window_debug(app: &AppHandle, stage: &str) {
     let _ = fs::write(state_dir.join("startup.json"), payload);
 }
 
-fn default_ball_position_handle(app: &AppHandle, scale: f64) -> (f64, f64) {
-    if let Ok(Some(monitor)) = app.primary_monitor() {
-        let position = monitor.position();
-        let size = monitor.size();
-        let margin = 24.0;
-        return (
-            (position.x as f64 + size.width as f64) / scale - BALL_SIZE - margin,
-            (position.y as f64 + size.height as f64) / scale - BALL_SIZE - margin * 3.0,
-        );
-    }
-    (120.0, 120.0)
-}
-
 fn default_ball_position(app: &tauri::App, scale: f64) -> (f64, f64) {
     if let Ok(Some(monitor)) = app.primary_monitor() {
         let position = monitor.position();
@@ -436,16 +690,17 @@ fn default_ball_position(app: &tauri::App, scale: f64) -> (f64, f64) {
     (120.0, 120.0)
 }
 
-fn window_of(app: &AppHandle) -> Result<WebviewWindow, String> {
-    app.get_webview_window("main").ok_or_else(|| "main window is not created".to_string())
+fn ball_window(app: &AppHandle) -> Result<WebviewWindow, String> {
+    app.get_webview_window(BALL_LABEL).ok_or_else(|| "main window is not created".to_string())
+}
+
+fn panel_window(app: &AppHandle) -> Result<WebviewWindow, String> {
+    app.get_webview_window(PANEL_LABEL).ok_or_else(|| "panel window is not created".to_string())
 }
 
 fn update_ball_pos(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if state.panel_open.load(Ordering::SeqCst) {
-        return;
-    }
-    let Ok(window) = window_of(app) else { return };
+    let Ok(window) = ball_window(app) else { return };
     let Ok(scale) = window.scale_factor() else { return };
     let Ok(position) = window.outer_position() else { return };
     let logical = position.to_logical::<f64>(scale);
@@ -489,7 +744,7 @@ fn record_expanded_frame(app: &AppHandle) {
     if mode == "ball" {
         return;
     }
-    let Ok(window) = window_of(app) else { return };
+    let Ok(window) = panel_window(app) else { return };
     let Ok(scale) = window.scale_factor() else { return };
     let Ok(position) = window.outer_position() else { return };
     let Ok(size) = window.outer_size() else { return };
@@ -511,83 +766,86 @@ fn set_window_mode(app: &AppHandle, mode: &str) -> Result<(), String> {
         other => return Err(format!("unknown mode: {other}")),
     };
     let expanded = mode_key != "ball";
-    let window = window_of(app)?;
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let current = window.outer_position().map_err(|error| error.to_string())?;
-    let logical = current.to_logical::<f64>(scale);
-    let (px, py) = (logical.x, logical.y);
-    let was_open = app.state::<AppState>().panel_open.load(Ordering::SeqCst);
-    let saved_ball = app.state::<AppState>().ball_pos.lock().ok().and_then(|guard| *guard);
-    if expanded && !was_open {
-        if let Ok(mut slot) = app.state::<AppState>().ball_pos.lock() {
-            *slot = Some((px, py));
-        };
-    }
-    // 展开位置与球无关：默认屏幕居中；用户本次运行内调整过则沿用内存中的 frame。
-    let (x, y, width, height) = if expanded {
-        let saved = app
-            .state::<AppState>()
+    let state = app.state::<AppState>();
+    if expanded {
+        let _ = close_quick_input(app);
+        if let Some(bubble) = app.get_webview_window(BUBBLE_LABEL) {
+            let _ = bubble.hide();
+        }
+        let window = panel_window(app)?;
+        let scale = window.scale_factor().map_err(|error| error.to_string())?;
+        // 面板位置与球无关：默认屏幕居中；用户本次运行内调整过则沿用内存中的 frame。
+        let saved = state
             .expanded_frames
             .lock()
             .ok()
             .and_then(|frames| frames.get(mode_key).copied());
-        match saved {
+        let (x, y, width, height) = match saved {
             Some((fx, fy, fw, fh)) => (fx, fy, fw, fh),
             None => default_expanded_frame(&window, scale, mode_key),
+        };
+        let _ = window.set_resizable(true);
+        window
+            .set_size(LogicalSize::new(width, height))
+            .map_err(|error| error.to_string())?;
+        window
+            .set_position(LogicalPosition::new(x, y))
+            .map_err(|error| error.to_string())?;
+        let _ = window.set_always_on_top(false);
+        // 球窗口永远置顶常驻：面板打开不隐藏、不移动球（用户反馈：点开后球不能消失）。
+        if let Ok(ball) = ball_window(app) {
+            let _ = ball.set_always_on_top(true);
         }
-    } else {
-        let (bx, by) = saved_ball.unwrap_or((px, py));
-        let (bx, by) = clamp_ball_position(app, bx, by, scale);
-        (bx, by, BALL_SIZE, BALL_SIZE)
-    };
-    let _ = window.set_always_on_top(!expanded);
-    window
-        .set_resizable(expanded)
-        .map_err(|error| error.to_string())?;
-    window
-        .set_size(LogicalSize::new(width, height))
-        .map_err(|error| error.to_string())?;
-    window
-        .set_position(LogicalPosition::new(x, y))
-        .map_err(|error| error.to_string())?;
-    if expanded {
+        // 页面未就绪时不 show（避免空白窗），由 on_page_load 看到 panel_open=true 后补显示。
+        if state.panel_ready.load(Ordering::SeqCst) {
+            window.show().map_err(|error| error.to_string())?;
+        }
         let _ = window.set_focus();
         // 尺寸/位置变更后系统可能把窗口重新排后；延迟再聚焦一次，确保键盘事件进入 WebView（ESC 可用）。
         let focus_handle = app.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(150));
-            if let Some(win) = focus_handle.get_webview_window("main") {
+            if let Some(win) = focus_handle.get_webview_window(PANEL_LABEL) {
                 let _ = win.set_focus();
             }
         });
+        if let Ok(after) = window.outer_position() {
+            let after_logical = after.to_logical::<f64>(scale);
+            let state_dir = state.config.state_dir.clone();
+            let _ = fs::create_dir_all(&state_dir);
+            let payload = format!(
+                "{{\"mode\":\"{}\",\"target\":[{},{}],\"after\":[{},{}],\"size\":[{},{}],\"scale\":{}}}",
+                mode, x, y, after_logical.x, after_logical.y, width, height, scale
+            );
+            let _ = fs::write(state_dir.join("last-mode.json"), payload);
+        }
+    } else if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+        let _ = window.hide();
     }
-    app.state::<AppState>().panel_open.store(expanded, Ordering::SeqCst);
-    if let Ok(mut current_mode) = app.state::<AppState>().current_mode.lock() {
+    state.panel_open.store(expanded, Ordering::SeqCst);
+    if let Ok(mut current_mode) = state.current_mode.lock() {
         *current_mode = mode_key;
     };
     let _ = app.emit("commander:mode", expanded);
     emit_visibility(app)?;
-    save_window(app);
-    if let Ok(after) = window.outer_position() {
-        let after_logical = after.to_logical::<f64>(scale);
-        let state_dir = app.state::<AppState>().config.state_dir.clone();
-        let _ = fs::create_dir_all(&state_dir);
-        let payload = format!(
-            "{{\"mode\":\"{}\",\"target\":[{},{}],\"after\":[{},{}],\"size\":[{},{}],\"scale\":{}}}",
-            mode, x, y, after_logical.x, after_logical.y, width, height, scale
-        );
-        let _ = fs::write(state_dir.join("last-mode.json"), payload);
+    if !expanded {
+        save_window(app);
+        let _ = show_bubble(app);
     }
     Ok(())
 }
 
 fn emit_visibility(app: &AppHandle) -> Result<(), String> {
-    let window = window_of(app)?;
+    let window = ball_window(app)?;
     let panel_open = app.state::<AppState>().panel_open.load(Ordering::SeqCst);
+    let panel_focused = app
+        .get_webview_window(PANEL_LABEL)
+        .map(|win| win.is_focused().unwrap_or(false))
+        .unwrap_or(false);
     send(&OutFrame::Visibility {
         visible: window.is_visible().unwrap_or(false),
         panel_open,
-        focused: window.is_focused().unwrap_or(false),
+        focused: window.is_focused().unwrap_or(false) || panel_focused,
     });
     if let Ok(position) = window.outer_position() {
         if let Ok(size) = window.outer_size() {
@@ -604,11 +862,8 @@ fn emit_visibility(app: &AppHandle) -> Result<(), String> {
 }
 
 fn save_window(app: &AppHandle) {
-    // 面板/看板的位置与大小只在内存里记住；重启恢复默认居中。
-    if app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
-        return;
-    }
-    let Ok(window) = window_of(app) else { return };
+    // window.json 只存球的位置；面板/看板 frame 只在内存里记住，重启恢复默认居中。
+    let Ok(window) = ball_window(app) else { return };
     let Ok(scale) = window.scale_factor() else { return };
     let now = Instant::now();
     {
@@ -641,7 +896,7 @@ fn load_window(config: &Config) -> Option<SavedWindow> {
 }
 
 fn apply_entry_pos(app: &AppHandle, point: NormalizedPoint) -> Result<(), String> {
-    let window = window_of(app)?;
+    let window = ball_window(app)?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let Ok(Some(monitor)) = window.current_monitor() else {
         return Ok(());
@@ -729,6 +984,38 @@ fn spawn_parent_watchdog(app: AppHandle, parent_pid: u32) {
 }
 
 // ---------------------------------------------------------------- 前端命令
+
+#[tauri::command]
+fn set_bubble(app: AppHandle, visible: bool) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    // 快捷输入打开时由它独占气泡窗；状态气泡的显隐等关闭后再由页面重新驱动。
+    if state.quick_open.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    state.bubble_active.store(visible, Ordering::SeqCst);
+    if visible {
+        return show_bubble(&app);
+    }
+    if let Some(window) = app.get_webview_window(BUBBLE_LABEL) {
+        window.hide().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_ball_unread(app: AppHandle, unread: bool) -> Result<(), String> {
+    let _ = app.emit_to(BALL_LABEL, "commander:ball-unread", unread);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_quick_input(app: AppHandle, open: bool) -> Result<(), String> {
+    if open {
+        show_quick_input(&app)
+    } else {
+        close_quick_input(&app)
+    }
+}
 
 #[tauri::command]
 fn set_mode(app: AppHandle, mode: String) -> Result<(), String> {

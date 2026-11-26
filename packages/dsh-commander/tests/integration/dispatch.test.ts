@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createStores } from '../../src/host/store/index.ts'
 import { commanderDomainSpec } from '../../src/host/domain.ts'
-import { createDispatchService } from '../../src/host/dispatch/service.ts'
+import { createDispatchService, type DispatchService, type DispatchTaskArgs, type DispatchTaskResult } from '../../src/host/dispatch/service.ts'
 import { createWorkStatusTracker, handleWorkSessionEvent } from '../../src/host/trigger/status.ts'
 import { defaultWorkspaceRecord, type TaskRecord } from '../../src/host/schema.ts'
 import {
@@ -15,6 +15,13 @@ import {
   createFakeWorkspaceRegistry,
 } from '../fakes/fakes.ts'
 import type { JevCallResult } from '../../src/host/jev/client.ts'
+
+/** 派发消息由指挥官写：默认原文只用于跑通链路；需要验证「原样透传」的用例单独传 prompt。 */
+const WORKER_PROMPT = '工作会话首条消息（测试）：按任务完成并给出证据。'
+const dispatchWith = (service: Pick<DispatchService, 'dispatchTask'>, args: DispatchTaskArgs): Promise<DispatchTaskResult> =>
+  // 首派（无 decisionId）默认补一份原文；确认调用不补，验证「省略 prompt 复用确认卡」的语义。
+  service.dispatchTask(args.decisionId === undefined ? { prompt: WORKER_PROMPT, ...args } : args)
+
 
 interface SetupOptions {
   allowed?: Array<{ id: string; policy?: 'inherit' | 'auto' }>
@@ -102,7 +109,7 @@ async function setup(options: SetupOptions = {}) {
 
 test('first commander_task_dispatch call always returns needs_confirmation (全确认)', async () => {
   const { dispatch, stores, pendingEvents } = await setup()
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_first_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_first_1' })
   assert.equal(result.status, 'needs_confirmation')
   if (result.status !== 'needs_confirmation') return
   assert.match(result.decisionId, /^dec_[0-9a-f]{24}$/)
@@ -119,20 +126,22 @@ test('first commander_task_dispatch call always returns needs_confirmation (全�
 
 test('same requestId replays the same needs_confirmation decision', async () => {
   const { dispatch } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_replay_1' })
-  const second = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_replay_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_replay_1' })
+  const second = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_replay_1' })
   assert.equal(first.status, 'needs_confirmation')
   assert.equal(second.status, 'needs_confirmation')
   if (first.status !== 'needs_confirmation' || second.status !== 'needs_confirmation') return
   assert.equal(first.decisionId, second.decisionId)
 })
 
-test('confirm path dispatches: task queued, dispatch record confirmed, session link + brief', async () => {
+test('confirm path dispatches: task queued, dispatch record confirmed, session link + prompt verbatim', async () => {
   const { dispatch, stores, controller } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_confirm_1' })
+  // 指挥官自写的原文：前后空白、多行都不得被 Host 改写（不 trim / 不加模板 / 不截断）。
+  const VERBATIM = '\n  自己写的首条消息\n第二行：目标与验收提示\n\n'
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_confirm_1', prompt: VERBATIM })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
   const target = first.recommendation
-  const result = await dispatch.dispatchTask({
+  const result = await dispatchWith(dispatch, {
     taskId: 'task_1',
     decisionId: first.decisionId,
     confirmTarget: target,
@@ -147,27 +156,70 @@ test('confirm path dispatches: task queued, dispatch record confirmed, session l
   assert.equal(controller.created[0]?.cwd, undefined) // create 入参二选一
   assert.equal(controller.prompts.length, 1)
   const promptText = String((controller.prompts[0]?.content as Array<{ text: string }>)[0]?.text)
-  assert.match(promptText, /^任务：/)
-  assert.doesNotMatch(promptText, /\[commander-dispatch\]|taskId=|decisionId=|sessionId=/)
+  assert.equal(promptText, VERBATIM)
+  assert.doesNotMatch(promptText, /\[commander-dispatch\]|taskId=|decisionId=|sessionId=|你是工作会话|验收提示：/)
   const task = stores.tasks.get('task_1')
   assert.equal(task?.status, 'queued')
   assert.equal(task?.primarySessionId, result.sessionId)
   const record = stores.dispatches.get(first.decisionId)
   assert.equal(record?.outcome, 'confirmed')
   assert.equal(record?.confirmedBy, 'user')
+  assert.equal(record?.brief, VERBATIM)
+  assert.equal((record as unknown as { instruction?: unknown })?.instruction, undefined)
   assert.deepEqual(record?.finalTarget, { workspaceId: target.workspaceId, mode: target.mode, sessionId: result.sessionId })
   const workLink = stores.sessions.list().find((link) => link.taskId === 'task_1')
   assert.equal(workLink?.role, 'work')
   assert.equal(workLink?.status, 'queued')
 })
 
+test('first call without prompt is rejected (invalid_prompt) and creates no card', async () => {
+  const { dispatch, stores, controller, pendingEvents } = await setup()
+  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_no_prompt_1' })
+  assert.equal(result.status, 'rejected')
+  if (result.status !== 'rejected') return
+  assert.equal(result.code, 'invalid_prompt')
+  assert.match(result.message, /prompt is required/)
+  assert.equal(pendingEvents.length, 0)
+  assert.equal(controller.prompts.length, 0)
+  assert.equal(stores.tasks.get('task_1')?.status, 'draft')
+})
+
+test('prompt is passed verbatim with no clipping (>8KB kept intact)', async () => {
+  const { dispatch, stores, controller } = await setup()
+  const big = `  ${'长'.repeat(9000)}\nTAIL  `
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_big_1', prompt: big })
+  if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
+  // 确认调用省略 prompt：复用确认卡里那一份，仍然逐字相同。
+  const dispatched = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_big_2' })
+  assert.equal(dispatched.status, 'dispatched')
+  const sent = String((controller.prompts[0]?.content as Array<{ text: string }>)[0]?.text)
+  assert.equal(sent.length, big.length)
+  assert.equal(sent, big)
+  assert.equal(stores.dispatches.get(first.decisionId)?.brief, big)
+})
+
+test('confirm call may replace the prompt stored on the card', async () => {
+  const { dispatch, controller } = await setup()
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_replace_1', prompt: '原始文本' })
+  if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
+  const dispatched = await dispatchWith(dispatch, {
+    taskId: 'task_1',
+    decisionId: first.decisionId,
+    confirmTarget: first.recommendation,
+    requestId: 'req_replace_2',
+    prompt: '用户确认时补充后的文本',
+  })
+  assert.equal(dispatched.status, 'dispatched')
+  assert.equal(String((controller.prompts[0]?.content as Array<{ text: string }>)[0]?.text), '用户确认时补充后的文本')
+})
+
 test('same decision second confirm replays dispatched without creating a second session', async () => {
   const { dispatch, controller } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_replay_confirm_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_replay_confirm_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
   const target = first.recommendation
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: target, requestId: 'req_replay_confirm_2' })
-  const replay = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: target, requestId: 'req_replay_confirm_3' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: target, requestId: 'req_replay_confirm_2' })
+  const replay = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: target, requestId: 'req_replay_confirm_3' })
   assert.equal(confirmed.status, 'dispatched')
   assert.equal(replay.status, 'dispatched')
   if (confirmed.status !== 'dispatched' || replay.status !== 'dispatched') return
@@ -177,7 +229,7 @@ test('same decision second confirm replays dispatched without creating a second 
 
 test('expired/unknown decision returns decision_expired', async () => {
   const { dispatch } = await setup()
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: 'dec_unknown_0000000000000000', confirmTarget: { workspaceId: 'ws-a', mode: 'new' }, requestId: 'req_expired_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: 'dec_unknown_0000000000000000', confirmTarget: { workspaceId: 'ws-a', mode: 'new' }, requestId: 'req_expired_1' })
   assert.equal(result.status, 'rejected')
   if (result.status !== 'rejected') return
   assert.equal(result.code, 'decision_expired')
@@ -185,7 +237,7 @@ test('expired/unknown decision returns decision_expired', async () => {
 
 test('jev unavailable still returns needs_confirmation with reason jev_unavailable', async () => {
   const { dispatch } = await setup({ jevOk: false })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_jev_down_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_jev_down_1' })
   assert.equal(result.status, 'needs_confirmation')
   if (result.status !== 'needs_confirmation') return
   assert.equal(result.reason, 'jev_unavailable')
@@ -194,7 +246,7 @@ test('jev unavailable still returns needs_confirmation with reason jev_unavailab
 
 test('no allowed workspace → rejected no_workspace', async () => {
   const { dispatch } = await setup({ allowed: [] })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_no_ws_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_no_ws_1' })
   assert.equal(result.status, 'rejected')
   if (result.status !== 'rejected') return
   assert.equal(result.code, 'no_workspace')
@@ -205,18 +257,18 @@ test('capability auto applies panel result; failure falls back and still dispatc
     allowed: [{ id: 'ws-a', policy: 'auto' }],
     panel: { jev: { getConfig: () => ({ threshold: 0.5 }), rank: () => ({ ok: true, items: [{ id: 'cap_1', name: 'browser', score: 0.9 }] }), apply: () => ({ ok: true, elapsedMs: 9 }) } },
   })
-  const first = await applied.dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_cap_1' })
+  const first = await dispatchWith(applied.dispatch, { taskId: 'task_1', requestId: 'req_cap_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const dispatched = await applied.dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_cap_2' })
+  const dispatched = await dispatchWith(applied.dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_cap_2' })
   assert.equal(dispatched.status, 'dispatched')
   if (dispatched.status !== 'dispatched') return
   assert.equal((dispatched.capabilities as { status: string; enabled: string[] }).status, 'applied')
   assert.deepEqual((dispatched.capabilities as { enabled: string[] }).enabled, ['browser'])
 
   const fallback = await setup({ allowed: [{ id: 'ws-a', policy: 'auto' }], panel: { jev: { rank: () => ({ ok: false }), apply: () => ({ ok: true }) } } })
-  const firstFallback = await fallback.dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_cap_fb_1' })
+  const firstFallback = await dispatchWith(fallback.dispatch, { taskId: 'task_1', requestId: 'req_cap_fb_1' })
   if (firstFallback.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const dispatchedFallback = await fallback.dispatch.dispatchTask({ taskId: 'task_1', decisionId: firstFallback.decisionId, confirmTarget: firstFallback.recommendation, requestId: 'req_cap_fb_2' })
+  const dispatchedFallback = await dispatchWith(fallback.dispatch, { taskId: 'task_1', decisionId: firstFallback.decisionId, confirmTarget: firstFallback.recommendation, requestId: 'req_cap_fb_2' })
   assert.equal(dispatchedFallback.status, 'dispatched')
   if (dispatchedFallback.status !== 'dispatched') return
   assert.equal((dispatchedFallback.capabilities as { status: string }).status, 'fallback')
@@ -226,20 +278,20 @@ test('capability auto applies panel result; failure falls back and still dispatc
 test('compat path: candidate without decisionId is a first-call hint; with unique pending it confirms', async () => {
   const { dispatch } = await setup()
   // 无 pending 时：candidate 作为首次派发提示 → needs_confirmation（不是 decision_required）
-  const hint = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'new' }, requestId: 'req_compat_0' })
+  const hint = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'ws-a', mode: 'new' }, requestId: 'req_compat_0' })
   assert.equal(hint.status, 'needs_confirmation')
   if (hint.status !== 'needs_confirmation') return
   assert.equal(hint.recommendation.workspaceId, 'ws-a')
   // 唯一 pending 时：candidate 视为确认目标 → dispatched
-  const compat = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: hint.recommendation.workspaceId, mode: hint.recommendation.mode }, requestId: 'req_compat_2' })
+  const compat = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: hint.recommendation.workspaceId, mode: hint.recommendation.mode }, requestId: 'req_compat_2' })
   assert.equal(compat.status, 'dispatched')
 })
 
 test('attach target dispatches to existing session without creating one', async () => {
   const { dispatch, controller } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_attach_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_attach_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: { workspaceId: 'ws-a', mode: 'attach', sessionId: 's-1' }, requestId: 'req_attach_2' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: { workspaceId: 'ws-a', mode: 'attach', sessionId: 's-1' }, requestId: 'req_attach_2' })
   assert.equal(result.status, 'dispatched')
   if (result.status !== 'dispatched') return
   assert.equal(result.sessionCreated, false)
@@ -249,7 +301,7 @@ test('attach target dispatches to existing session without creating one', async 
 
 test('task not in draft/proposed state is rejected with task_state', async () => {
   const { dispatch } = await setup({ taskStatus: 'queued' })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_state_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_state_1' })
   assert.equal(result.status, 'rejected')
   if (result.status !== 'rejected') return
   assert.equal(result.code, 'task_state')
@@ -257,9 +309,9 @@ test('task not in draft/proposed state is rejected with task_state', async () =>
 
 test('turn/start mechanically moves queued task to running (M1, no injection)', async () => {
   const { dispatch, stores, ctx } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_running_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_running_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
-  const dispatched = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_running_2' })
+  const dispatched = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_running_2' })
   if (dispatched.status !== 'dispatched') return assert.fail('expected dispatched')
   const result = await handleWorkSessionEvent({ ctx, stores, now: () => 100 }, dispatched.sessionId, { seq: 5, type: 'turn/start', time: 100, data: { turn: 1 } })
   assert.equal(result?.status, 'running')
@@ -270,15 +322,15 @@ test('turn/start mechanically moves queued task to running (M1, no injection)', 
 
 test('H3: confirm success clears pendingDispatch immediately (used decision is not exposed)', async () => {
   const { dispatch, pendingEvents } = await setup()
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_h3_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_h3_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
   assert.equal(dispatch.currentPending()?.decisionId, first.decisionId)
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_h3_2' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_h3_2' })
   assert.equal(confirmed.status, 'dispatched')
   assert.equal(dispatch.currentPending(), null)
   assert.equal(pendingEvents.at(-1), null)
   // 同一 decision 再确认：幂等回放 dispatched，但不得重新出现 pending
-  const replay = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_h3_3' })
+  const replay = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_h3_3' })
   assert.equal(replay.status, 'dispatched')
   assert.equal(dispatch.currentPending(), null)
 })
@@ -304,13 +356,13 @@ test('H4: orphan turn/start arriving before task/link write is reconciled to run
       await tracker.reconcile(taskId, sessionId)
     },
   })
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_h4_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_h4_1' })
   if (first.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
   // 模拟竞态：prompt 先启动回合 → turn/start 到达时 sessions link 尚未写入
   assert.equal(tracker.orphanCount(), 0)
   await tracker.handleEvent('session-fake-1', { seq: 5, type: 'turn/start', time: 1000, data: { turn: 1 } })
   assert.equal(tracker.orphanCount(), 1)
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_h4_2' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_h4_2' })
   assert.equal(confirmed.status, 'dispatched')
   // reconcile 是异步补偿（事件处理链），轮询到 running 再断言，避免 fire-and-forget 时序抖动
   const waitFor = async (predicate: () => boolean, timeoutMs = 2000): Promise<boolean> => {
@@ -480,7 +532,7 @@ test('H5: every commander_task_dispatch tool path result passes the real DSH out
   await tools1.prepare()
   const spec = tools1.specs()?.commander_task_dispatch as { output: { schema: unknown }; execute: (args: unknown, exec: unknown) => Promise<unknown> }
   const exec = { agent: { id: 'session-commander' }, signal: { throwIfAborted: () => undefined } }
-  const first = await spec.execute({ taskId: 'task_1', requestId: 'req_h5_1' }, exec)
+  const first = await spec.execute({ taskId: 'task_1', requestId: 'req_h5_1', prompt: 'H5 首派原文' }, exec)
   execValid(first, 'needs_confirmation')
   const decisionId = (first as { decisionId: string }).decisionId
   const target = (first as { recommendation: { workspaceId: string; mode: 'new' } }).recommendation
@@ -495,7 +547,7 @@ test('H5: every commander_task_dispatch tool path result passes the real DSH out
   const tools2 = buildTools(s2.dispatch)
   await tools2.prepare()
   const spec2 = tools2.specs()?.commander_task_dispatch as typeof spec
-  execValid(await spec2.execute({ taskId: 'task_1', requestId: 'req_h5_5' }, exec), 'no_workspace-rejected')
+  execValid(await spec2.execute({ taskId: 'task_1', requestId: 'req_h5_5', prompt: 'H5 首派原文' }, exec), 'no_workspace-rejected')
   execValid(await spec2.execute({ taskId: 'task_missing', requestId: 'req_h5_6' }, exec), 'unknown_task-rejected')
   const s3 = await setup({ taskStatus: 'queued' })
   const tools3 = buildTools(s3.dispatch)
@@ -513,7 +565,7 @@ test('H5: every commander_task_dispatch tool path result passes the real DSH out
 test('candidate.workspaceId resolves by id / name / path (live M1 fix)', async () => {
   for (const reference of ['ws-a', 'A', '/tmp/a', ' a ']) {
     const { dispatch } = await setup()
-    const result = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: reference, mode: 'new' }, requestId: `req_ref_${encodeURIComponent(reference)}` })
+    const result = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: reference, mode: 'new' }, requestId: `req_ref_${encodeURIComponent(reference)}` })
     assert.equal(result.status, 'needs_confirmation', `reference ${reference}: ${JSON.stringify(result)}`)
     if (result.status !== 'needs_confirmation') continue
     assert.equal(result.recommendation.workspaceId, 'ws-a')
@@ -529,7 +581,7 @@ test('ambiguous workspace name returns needs_confirmation(reason=ambiguous_works
       { id: 'ws-b', name: 'Shared Name', path: '/tmp/shared-b' },
     ],
   })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'shared name', mode: 'new' }, requestId: 'req_ambiguous_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'shared name', mode: 'new' }, requestId: 'req_ambiguous_1' })
   assert.equal(result.status, 'needs_confirmation')
   if (result.status !== 'needs_confirmation') return
   assert.equal(result.reason, 'ambiguous_workspace')
@@ -538,7 +590,7 @@ test('ambiguous workspace name returns needs_confirmation(reason=ambiguous_works
 
 test('unknown workspace reference returns no_workspace with commander_workspace_list hint', async () => {
   const { dispatch } = await setup()
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', candidate: { workspaceId: 'no-such-workspace', mode: 'new' }, requestId: 'req_unknown_ws_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', candidate: { workspaceId: 'no-such-workspace', mode: 'new' }, requestId: 'req_unknown_ws_1' })
   assert.equal(result.status, 'rejected')
   if (result.status !== 'rejected') return
   assert.equal(result.code, 'no_workspace')
@@ -552,18 +604,18 @@ test('task.workspaceId (设置过) 作为首次派发提示，确认后回写规
   // 模拟指挥官先 commander_task_create({workspaceId:"A"})（名称而非 id）
   const task = stores.tasks.get('task_1') as TaskRecord
   await stores.tasks.put({ ...task, workspaceId: 'A', version: task.version + 1 })
-  const first = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_task_ws_1' })
+  const first = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_task_ws_1' })
   assert.equal(first.status, 'needs_confirmation')
   if (first.status !== 'needs_confirmation') return
   assert.equal(first.recommendation.workspaceId, 'ws-a')
-  const confirmed = await dispatch.dispatchTask({ taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_task_ws_2' })
+  const confirmed = await dispatchWith(dispatch, { taskId: 'task_1', decisionId: first.decisionId, confirmTarget: first.recommendation, requestId: 'req_task_ws_2' })
   assert.equal(confirmed.status, 'dispatched')
   assert.equal(stores.tasks.get('task_1')?.workspaceId, 'ws-a')
 })
 
 test('no allowed workspace 时 no_workspace message 提示 commander_task_create/commander_workspace_list', async () => {
   const { dispatch } = await setup({ allowed: [] })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_no_ws_hint' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_no_ws_hint' })
   assert.equal(result.status, 'rejected')
   if (result.status !== 'rejected') return
   assert.equal(result.code, 'no_workspace')
@@ -593,7 +645,7 @@ const twoStageJev = (calls: TwoStageBody[], workspaceChoice: string) => async (_
 test('two-stage: workspace request keeps state to the request and puts workspace info in criteria', async () => {
   const calls: TwoStageBody[] = []
   const { dispatch } = await setup({ jevCall: twoStageJev(calls, 'w_0') })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_two_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_two_1' })
   assert.equal(result.status, 'needs_confirmation')
   assert.equal(calls.length, 2, 'dispatch must issue exactly two Jev calls')
 
@@ -616,7 +668,7 @@ test('two-stage: workspace request keeps state to the request and puts workspace
 test('two-stage: session options are scoped to the chosen workspace', async () => {
   const calls: TwoStageBody[] = []
   const { dispatch } = await setup({ jevCall: twoStageJev(calls, 'w_1') })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_two_2' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_two_2' })
   if (result.status !== 'needs_confirmation') return assert.fail('expected needs_confirmation')
   assert.equal(result.recommendation.workspaceId, 'ws-b')
   assert.deepEqual(Object.keys(calls[1]?.questions.session?.criteria ?? {}), ['new'], 'workspace B has no sessions')
@@ -626,7 +678,7 @@ test('two-stage: session options are scoped to the chosen workspace', async () =
 // ---------------------------------------------------------------- 自动派发（autoDispatch）
 test('autoDispatch on: gate pass dispatches without confirmation and records outcome=auto', async () => {
   const { dispatch, stores } = await setup({ autoDispatch: true })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_auto_1' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_auto_1' })
   if (result.status !== 'dispatched') return assert.fail(`expected dispatched, got ${result.status}`)
   assert.equal(dispatch.currentPending(), null)
   const record = stores.dispatches.get(result.decisionId)
@@ -647,7 +699,7 @@ test('autoDispatch on: low confidence still returns needs_confirmation', async (
     },
   })
   const { dispatch } = await setup({ autoDispatch: true, jevCall: low })
-  const result = await dispatch.dispatchTask({ taskId: 'task_1', requestId: 'req_auto_2' })
+  const result = await dispatchWith(dispatch, { taskId: 'task_1', requestId: 'req_auto_2' })
   assert.equal(result.status, 'needs_confirmation')
   if (result.status !== 'needs_confirmation') return
   assert.equal(result.reason, 'low_confidence')

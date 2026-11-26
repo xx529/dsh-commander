@@ -1,7 +1,7 @@
 // GET /commander/state 快照构造（implementation-plan §8.3 + m0-contract-patch §1.6）。
 import { SNAPSHOT_TASKS_MAX } from '../config.ts'
-import { taskIsStale } from '../board/service.ts'
 import type { CommanderMessage } from '../session/messages.ts'
+import type { CommanderActivity } from '../session/commander-events.ts'
 import type { BindingView, CommanderStatus } from '../session/binding.ts'
 import type { StoreSet } from '../store/index.ts'
 import type { CordisContext, WorkspaceRegistryService } from '../dsh-types.ts'
@@ -10,7 +10,7 @@ import { WORK_SESSIONS_MAX } from '../config.ts'
 import { panelPresence } from './panel.ts'
 import { capabilitySummary } from '../dispatch/capability.ts'
 import type { FormerCommander, RotationView } from '../rotation/service.ts'
-import { isReady, waitingFor } from '../tasks/dependencies.ts'
+import { isReady, waitingFor, hasPendingDependents } from '../tasks/dependencies.ts'
 
 export interface WorkspaceView {
   id: string
@@ -35,7 +35,6 @@ export interface TaskView {
   sessionCount: number
   acceptanceCount: number
   evidenceInsufficientCount: number
-  stale: boolean
   archivedAt?: number
   lastActivityAt: number
   capability?: { status: string; enabledCount: number; disabledCount: number; durationMs?: number }
@@ -44,6 +43,10 @@ export interface TaskView {
   dependsOn: string[]
   waitingFor: string[]
   ready: boolean
+  /** 是否仍有未终结的后继任务（决定验收是否要求交接说明、指挥官能否验收）。 */
+  hasPendingDependents: boolean
+  /** 最近一次验收来源：人/指挥官；旧记录缺省视为人。 */
+  acceptedBy?: 'user' | 'commander'
   /** 全局单确认卡：该任务是否有未决确认。 */
   pendingDispatch: boolean
 }
@@ -62,6 +65,8 @@ export interface CommanderSnapshot {
   pendingDispatch: unknown
   metrics: { injections: number; deduped: number; pendingSkipped: number; injectFailures: number; projectionUnavailable: number }
   commanderBusy: boolean
+  /** 当前回合可展示动作（加法字段；工具 description 或 assistant 文本）。 */
+  commanderActivity: CommanderActivity | null
   messages: CommanderMessage[]
   /** M4 加法字段：原生壳进程状态。 */
   nativeShell?: 'disabled' | 'starting' | 'running' | 'failed' | 'stopped'
@@ -77,6 +82,7 @@ export interface SnapshotDeps {
   binding: BindingView
   messages: CommanderMessage[]
   commanderBusy: boolean
+  commanderActivity?: CommanderActivity | null
   rev: number
   now?: () => number
   pendingDispatch?: unknown
@@ -136,7 +142,7 @@ export async function buildWorkspaceViews(ctx: CordisContext, stores: StoreSet):
 }
 
 /** 任务记录 → 看板行（snapshot 与 SSE `task.updated` 共用，保证两端字段一致）。 */
-export function buildTaskView(task: TaskRecord, at = Date.now(), dependencies?: { lookup?: (id: string) => TaskRecord | undefined; pendingDispatchTaskId?: string }): TaskView {
+export function buildTaskView(task: TaskRecord, dependencies?: { lookup?: (id: string) => TaskRecord | undefined; pendingDispatchTaskId?: string; tasks?: readonly TaskRecord[] }): TaskView {
   const lookup = dependencies?.lookup ?? (() => undefined)
   const waiting = waitingFor(task, lookup)
   return {
@@ -152,7 +158,6 @@ export function buildTaskView(task: TaskRecord, at = Date.now(), dependencies?: 
     sessionCount: task.assignments.length,
     acceptanceCount: task.acceptance.length,
     evidenceInsufficientCount: task.acceptance.filter((item) => item.state === 'insufficient').length,
-    stale: taskIsStale(task, at),
     ...(task.archivedAt !== undefined ? { archivedAt: task.archivedAt } : {}),
     lastActivityAt: task.lastActivityAt,
     capability: capabilitySummary(task),
@@ -160,6 +165,8 @@ export function buildTaskView(task: TaskRecord, at = Date.now(), dependencies?: 
     dependsOn: task.dependsOn ?? [],
     waitingFor: waiting,
     ready: isReady(task, lookup),
+    hasPendingDependents: hasPendingDependents(dependencies?.tasks ?? [], task.id),
+    ...(task.acceptedBy !== undefined ? { acceptedBy: task.acceptedBy } : {}),
     pendingDispatch: dependencies?.pendingDispatchTaskId === task.id,
   }
 }
@@ -173,7 +180,6 @@ export function countTaskStatuses(tasks: readonly TaskRecord[]): Record<string, 
 
 export async function buildSnapshot(deps: SnapshotDeps): Promise<CommanderSnapshot> {
   const now = deps.now ?? (() => Date.now())
-  const at = now()
   const allTasks = deps.stores.tasks.list()
   // 契约 §2.3：tasks 默认只含非 archived（≤200，updatedAt 倒序）；回收站走 GET /commander/archive。
   const tasks = allTasks
@@ -195,7 +201,7 @@ export async function buildSnapshot(deps: SnapshotDeps): Promise<CommanderSnapsh
     commanderStatus: deps.binding.status,
     panel: panelPresence(deps.ctx),
     counts,
-    tasks: tasks.map((task) => buildTaskView(task, at, { lookup, ...(pendingTaskId !== undefined ? { pendingDispatchTaskId: pendingTaskId } : {}) })),
+    tasks: tasks.map((task) => buildTaskView(task, { lookup, tasks: allTasks, ...(pendingTaskId !== undefined ? { pendingDispatchTaskId: pendingTaskId } : {}) })),
     archiveSummary,
     workSessions: deps.stores.sessions
       .list()
@@ -206,6 +212,7 @@ export async function buildSnapshot(deps: SnapshotDeps): Promise<CommanderSnapsh
     pendingDispatch: deps.pendingDispatch ?? null,
     metrics: deps.metrics ?? { injections: 0, deduped: 0, pendingSkipped: 0, injectFailures: 0, projectionUnavailable: 0 },
     commanderBusy: deps.commanderBusy,
+    commanderActivity: deps.commanderActivity ?? null,
     messages: deps.messages,
     ...(deps.rotation !== undefined ? { rotation: deps.rotation } : {}),
     ...(deps.formerCommanders !== undefined ? { formerCommanders: deps.formerCommanders } : {}),

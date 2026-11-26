@@ -39,30 +39,33 @@ export function createWindowPage(options: WindowPageOptions = {}): WindowPage {
       const params = new URLSearchParams(query >= 0 ? requestUrl.slice(query + 1) : '')
       if (params.get('token') !== token) return null
       // `panel=1` 仅用于无头截图/调试：直接以面板态渲染。
+      // `role=ball|panel` 由壳按窗口角色追加（契约 §5）：球窗口与面板窗口各自加载一份页面。
       const panel = params.get('panel') === '1'
+      const roleParam = params.get('role')
+      const role: WindowRole = roleParam === 'ball' || roleParam === 'panel' || roleParam === 'bubble' ? roleParam : ''
       const session = params.get('session') ?? ''
-      const key = `${panel ? 1 : 0}:${session}`
+      const key = `${panel ? 1 : 0}:${role}:${session}`
       const hit = cache.get(key)
       if (hit !== undefined) return hit
       bundle ??= readBundle()
-      const html = render(bundle, token, locale, panel, session)
+      const html = render(bundle, token, locale, panel, session, role)
       cache.set(key, html)
       return html
     },
   }
 }
 
-function render(bundle: string, token: string, locale: 'zh' | 'en', panel: boolean, session: string): string {
+/** 窗口页角色：空串 = 旧同窗两态（浏览器调试），ball/panel = 壳内的球/面板窗口。 */
+export type WindowRole = '' | 'ball' | 'panel' | 'bubble'
+
+function render(bundle: string, token: string, locale: 'zh' | 'en', panel: boolean, session: string, role: WindowRole): string {
   // 内联 bundle 时防止提前闭合 <script>。
   const safeBundle = bundle.replaceAll('</script', '<\\/script')
-  const boot = JSON.stringify({ token, locale, panel, session })
-  const diagnostics = `<script>
-window.addEventListener('error', function (event) {
-  try { fetch('/commander/window-error?message=' + encodeURIComponent(String(event.message) + ' @' + (event.filename || '') + ':' + (event.lineno || 0))).catch(function () {}); } catch (_) {}
-});
-window.addEventListener('unhandledrejection', function (event) {
-  try { fetch('/commander/window-error?message=' + encodeURIComponent('rejection: ' + String(event.reason))).catch(function () {}); } catch (_) {}
-});
+  const boot = JSON.stringify({ token, locale, panel, session, role })
+  // 气泡窗不是球窗：它加载失败时不要注入 fallback 球，否则会在气泡窗里出现一颗假球。
+  const fallback = role === 'bubble'
+    ? ''
+    : `
 setTimeout(function () {
   var root = document.getElementById('root');
   if (root && root.childElementCount === 0) {
@@ -79,16 +82,27 @@ setTimeout(function () {
     });
     document.body.appendChild(ball);
   }
-}, 3000);
-</script>
-<style>
+}, 3000);`
+  const fallbackStyle = role === 'bubble'
+    ? ''
+    : `<style>
 #__fallback_ball {
-  position: fixed; right: 16px; bottom: 16px; width: 48px; height: 48px;
+  position: fixed; right: 8px; bottom: 8px; width: 60px; height: 60px;
   border: 0; border-radius: 50%; color: #fff; font: 600 20px -apple-system, sans-serif;
   background: radial-gradient(circle at 32% 28%, #4f8bff, #1f63eb 62%, #1748b8);
   box-shadow: 0 6px 18px rgba(15, 40, 100, 0.45); cursor: pointer; z-index: 2147483647;
 }
 </style>`
+  const diagnostics = `<script>
+window.addEventListener('error', function (event) {
+  try { fetch('/commander/window-error?message=' + encodeURIComponent(String(event.message) + ' @' + (event.filename || '') + ':' + (event.lineno || 0))).catch(function () {}); } catch (_) {}
+});
+window.addEventListener('unhandledrejection', function (event) {
+  try { fetch('/commander/window-error?message=' + encodeURIComponent('rejection: ' + String(event.reason))).catch(function () {}); } catch (_) {}
+});
+${fallback}
+</script>
+${fallbackStyle}`
   return `<!doctype html>
 <html lang="${locale}">
 <head>

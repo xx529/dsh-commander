@@ -9,7 +9,8 @@
  */
 import type {
   ApiFailure, ChatMessage, CommanderBinding, CommanderMessage, CommanderSnapshot, CommanderStatus,
-  ArchiveListResult, BoardEditView, BoardPatchRequest, BoardPatchResult, ConfigPatch, ConfigView, ConnectionPhase,
+  CommanderActivity,
+  ArchiveListResult, ArchiveQuery, BoardEditView, BoardPatchRequest, BoardPatchResult, ConfigPatch, ConfigView, ConnectionPhase,
   HttpResult, JevConfig, JevTestResult, PendingDispatchView, SessionListResult, SessionOptionView, TaskDetailView,
   TaskView, EntryPosition, UiConfig, WorkSessionView, WorkspacePatch, WorkspaceView, WriteResult,
   RotationView, FormerCommander, RotationResult,
@@ -44,6 +45,8 @@ export interface CommanderState {
   messages: ChatMessage[]
   busy: boolean
   lastTurnId: number | null
+  /** Current tool description / assistant text from the Host (`commander.status.activity`). */
+  activity: CommanderActivity | null
   lastEventAt: number
   /** UI preference mirrored from `PUT /commander/config` (not part of the snapshot). */
   ui: UiConfig
@@ -71,6 +74,7 @@ export function createInitialState(): CommanderState {
     messages: [],
     busy: false,
     lastTurnId: null,
+    activity: null,
     lastEventAt: 0,
     ui: { theme: 'follow', entryPosition: 'br', entryEnabled: true, entryPos: null },
     rotation: null,
@@ -144,6 +148,7 @@ export function applySnapshot(state: CommanderState, snapshot: CommanderSnapshot
     ...(snapshot.archiveSummary === undefined ? {} : { archiveSummary: { ...snapshot.archiveSummary } }),
     messages: mergeMessages([], incoming),
     busy: snapshot.commanderBusy === true,
+    activity: normalizeActivity(snapshot.commanderActivity),
     lastEventAt: Date.now(),
     rotation: normalizeRotation(snapshot.rotation),
     formerCommanders: normalizeFormerCommanders(snapshot.formerCommanders),
@@ -185,12 +190,14 @@ export function applyEvent(state: CommanderState, frame: SSEFrame): CommanderSta
       }
     }
     case 'commander.status': {
-      const payload = data as { busy?: unknown; lastTurnId?: unknown }
+      const payload = data as { busy?: unknown; lastTurnId?: unknown; activity?: unknown }
       return {
         ...state,
         rev: nextRev,
         busy: payload.busy === true,
         lastTurnId: typeof payload.lastTurnId === 'number' ? payload.lastTurnId : state.lastTurnId,
+        // Old Hosts omit `activity`; preserve the last value instead of clearing it.
+        ...(payload.activity === undefined ? {} : { activity: normalizeActivity(payload.activity) }),
         lastEventAt: now,
       }
     }
@@ -622,7 +629,6 @@ export function normalizeTaskDetail(payload: unknown): TaskDetailView {
     sessions: arrayOfRecords(record.sessions),
     boardEdits: arrayOfRecords(record.boardEdits) as BoardEditView[],
     ...(typeof record.archivedAt === 'number' ? { archivedAt: record.archivedAt } : {}),
-    ...(record.stale === true ? { stale: true } : {}),
     ...(typeof record.rev === 'number' ? { rev: record.rev } : {}),
   }
 }
@@ -683,11 +689,11 @@ export async function restoreTask(baseUrl: string, taskId: string): Promise<Http
   return { ok: true, status: result.status, data: task }
 }
 
-/** `POST /commander/tasks/:id/accept` — review→done, human-only (m2m3 patch §3.4). */
-export async function acceptTask(baseUrl: string, taskId: string): Promise<HttpResult<TaskView>> {
+/** `POST /commander/tasks/:id/accept` — review→done, human-only; optional handoff note. */
+export async function acceptTask(baseUrl: string, taskId: string, note?: string): Promise<HttpResult<TaskView>> {
   const result = await requestJson<Record<string, unknown>>(
     apiUrl(baseUrl, `/commander/tasks/${encodeURIComponent(taskId)}/accept`),
-    { method: 'POST', body: {} },
+    { method: 'POST', body: note !== undefined && note !== '' ? { note } : {} },
   )
   if (!result.ok) return result
   const task = unwrapTask(result.data)
@@ -727,24 +733,49 @@ export async function reworkTask(baseUrl: string, taskId: string, comment?: stri
   return { ok: true, status: result.status, data: task }
 }
 
-/** `GET /commander/archive?limit=&cursor=` — trash list (m2m3 patch §2.5). */
-export async function fetchArchive(baseUrl: string, limit = 50, cursor?: string | number): Promise<HttpResult<ArchiveListResult>> {
-  const cursorPart = cursor === undefined ? '' : `&cursor=${encodeURIComponent(String(cursor))}`
-  const result = await requestJson<Record<string, unknown>>(
-    apiUrl(baseUrl, `/commander/archive?limit=${String(limit)}${cursorPart}`),
-  )
+/** `GET /commander/archive` — 回收站列表（m2m3 patch §2.5.1；只读）。 */
+export async function fetchArchive(baseUrl: string, options: ArchiveQuery = {}): Promise<HttpResult<ArchiveListResult>> {
+  const params = new URLSearchParams()
+  params.set('limit', String(options.limit ?? 50))
+  if (options.cursor !== undefined && options.cursor !== null) params.set('cursor', String(options.cursor))
+  if (options.q !== undefined && options.q.trim() !== '') params.set('q', options.q.trim())
+  if (options.status !== undefined) params.set('status', options.status)
+  if (options.workspaceId !== undefined && options.workspaceId !== '') params.set('workspaceId', options.workspaceId)
+  if (options.from !== undefined) params.set('from', String(options.from))
+  if (options.to !== undefined) params.set('to', String(options.to))
+  const result = await requestJson<Record<string, unknown>>(apiUrl(baseUrl, `/commander/archive?${params.toString()}`))
   if (!result.ok) return result
   const rows = Array.isArray(result.data.tasks) ? (result.data.tasks as unknown[]) : []
+  const summaryRaw = result.data.summary
+  const summary = summaryRaw !== null && typeof summaryRaw === 'object'
+    ? {
+        archivedCount: numberOrZero((summaryRaw as Record<string, unknown>).archivedCount),
+        cancelledCount: numberOrZero((summaryRaw as Record<string, unknown>).cancelledCount),
+        last30dCount: numberOrZero((summaryRaw as Record<string, unknown>).last30dCount),
+      }
+    : undefined
+  const months = Array.isArray(result.data.months)
+    ? (result.data.months as unknown[])
+        .filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object' && typeof (row as Record<string, unknown>).key === 'string')
+        .map((row) => ({ key: row.key as string, count: numberOrZero(row.count) }))
+    : undefined
   return {
     ok: true,
     status: result.status,
     data: {
       tasks: rows.filter((row): row is TaskView => row !== null && typeof row === 'object' && typeof (row as TaskView).id === 'string'),
-      ...(typeof result.data.nextCursor === 'number' || typeof result.data.nextCursor === 'string'
-        ? { nextCursor: result.data.nextCursor }
+      ...(typeof result.data.nextCursor === 'number' || typeof result.data.nextCursor === 'string' || result.data.nextCursor === null
+        ? { nextCursor: result.data.nextCursor as number | string | null }
         : {}),
+      ...(typeof result.data.total === 'number' ? { total: result.data.total } : {}),
+      ...(summary !== undefined ? { summary } : {}),
+      ...(months !== undefined ? { months } : {}),
     },
   }
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 function unwrapTask(record: Record<string, unknown>): TaskView | undefined {
@@ -834,6 +865,15 @@ function randomToken(length: number): string {
 
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/** Normalize `commanderActivity`; unusable payloads show nothing rather than stale/empty text. */
+function normalizeActivity(value: unknown): CommanderActivity | null {
+  if (typeof value !== 'object' || value === null) return null
+  const text = (value as { text?: unknown }).text
+  if (typeof text !== 'string' || text.trim() === '') return null
+  const at = (value as { at?: unknown }).at
+  return { text: text.trim(), at: typeof at === 'number' && Number.isFinite(at) ? at : 0 }
 }
 
 /** Map the Host status string onto the three states the header pill renders. */

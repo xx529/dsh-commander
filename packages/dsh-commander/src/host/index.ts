@@ -31,6 +31,7 @@ import { createDispatchService } from './dispatch/service.ts'
 import { agentSessionIdOf, createCommanderTools } from './tools/index.ts'
 import { createWorkStatusTracker } from './trigger/status.ts'
 import { createRotationService } from './rotation/service.ts'
+import { setSessionToolAudit } from './rotation/tool-audit.ts'
 import { registerCommanderPromptSection } from './session/prompt.ts'
 import { createShellSupervisor, resolveShellBinary } from './native/supervisor.ts'
 import { createApprovalBridge, type ApprovalBridge } from './native/approval-bridge.ts'
@@ -66,6 +67,9 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
   if (webServer === undefined || typeof webServer.register !== 'function') {
     throw new Error('[commander] webServer service is unavailable: /commander/* routes cannot be registered.')
   }
+  // 本机 origin：原生壳窗口 token 与跨插件本机路由（dsh-trace-inspect 工具审计）共用。
+  const webOrigin = (process.env.DSH_WEB_URL
+    ?? (webServer.getOrigin?.() ?? `http://127.0.0.1:${String(webServer.port ?? 3080)}`)).replace(/\/+$/, '')
 
   // 1) domain open（含声明层校验；本地/宿主 defineDomain 两种路径都不改变 spec 语义）
   const { spec, via } = await resolveCommanderDomainSpec()
@@ -82,7 +86,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
   /** 任务变化统一推送：整行 `task.updated` + 当前 `tasks.changed` 计数（面板头部 chip 不跟盘会过期）。 */
   const broadcastTaskChange = (task: TaskRecord): void => {
     sse.broadcast('task.updated', {
-      task: buildTaskView(task, Date.now(), { lookup: (id) => stores.tasks.get(id), ...(dispatchService.currentPending()?.taskId !== undefined ? { pendingDispatchTaskId: dispatchService.currentPending()?.taskId as string } : {}) }),
+      task: buildTaskView(task, { lookup: (id) => stores.tasks.get(id), tasks: stores.tasks.list(), ...(dispatchService.currentPending()?.taskId !== undefined ? { pendingDispatchTaskId: dispatchService.currentPending()?.taskId as string } : {}) }),
       rev: sse.rev,
     })
     sse.broadcast('tasks.changed', { counts: countTaskStatuses(stores.tasks.list()), rev: sse.rev })
@@ -109,11 +113,16 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     },
   })
   // 4) binding（启动不 resume；未绑定 → unbound）
+  // 工具审计闭包由 binding（手动绑定到新会话）与 rotation（换代）共用，保证两条路径同一传输口径。
+  const setToolAuditFor = (sessionId: string, enabled: boolean) =>
+    setSessionToolAudit({ origin: webOrigin, sessionId, enabled })
   const binding = createBindingService({
     ctx,
     config: stores.config,
     sessions: stores.sessions,
     workspaces: stores.workspaces,
+    setToolAudit: setToolAuditFor,
+    logger,
   })
 
   // 4) 消息环 / busy 状态 / SSE hub（重启后从已 live 的指挥官会话事件 best-effort 回填 ≤200 条）
@@ -126,7 +135,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
   } catch {
     // best-effort：回填失败不阻塞启动（M0 契约允许）
   }
-  const status: CommanderStatusState = { busy: false, lastTurnId: null }
+  const status: CommanderStatusState = { busy: false, lastTurnId: null, activity: null }
   const sse = createSseHub()
 
   // 5) 投递器（懒 resume 由 sessionController.prompt 完成；失败 markBroken）
@@ -142,6 +151,8 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
   // 启动补提醒：ready 且 dependencyNotifiedAt 缺省的任务投一次（失败留待下次 accept/启动）。
   void dependencyNotifier.backfill()
   // 5a2) 模型工具：指挥官会话内可见（需在 deliverer/notifier 之后创建，以便 cancel/依赖提醒）。
+  /** 工作区摘要写入后整帧快照广播（api 在步骤 9 创建，先留晚绑定位）。 */
+  let broadcastWorkspaceSnapshot: (() => Promise<void>) | undefined
   const commanderTools = createCommanderTools({
     ctx,
     stores,
@@ -153,6 +164,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     hasPendingDispatch: (taskId) => dispatchService.currentPending()?.taskId === taskId,
     dependencyNotifier,
     onTaskSettled: (taskId) => dispatchService.invalidateTask(taskId),
+    onWorkspaceChanged: async () => { await broadcastWorkspaceSnapshot?.() },
   })
   await commanderTools.prepare()
   ctx.effect(() => () => commanderTools.dispose())
@@ -162,7 +174,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     logger.warn?.('[commander] commander tools were not registered (tools service unavailable?)')
   }
 
-  // 5b) M2 看板服务：PATCH/boardEdits + 30s 合并注入 + archive/restore + stale。
+  // 5b) M2 看板服务：PATCH/boardEdits + 30s 合并注入 + archive/restore。
   // 合并窗口可用 COMMANDER_BOARD_MERGE_MS 覆盖（仅用于隔离测试缩短等待；生产默认 30s）。
   const boardMergeOverride = Number(process.env.COMMANDER_BOARD_MERGE_MS)
   const boardService = createBoardService({
@@ -189,6 +201,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     getStatus: () => status,
     getPendingDispatch: () => dispatchService.currentPending(),
     hasPendingBoardInjection: () => boardService.pendingMerges() > 0,
+    setToolAudit: setToolAuditFor,
     emit: (event, payload) => sse.broadcast(event, { ...payload, rev: sse.rev }),
     logger,
   })
@@ -278,8 +291,6 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
 
   // 8) M4 原生壳：窗口页 token + 进程 supervisor（非 darwin/产物缺失/显式关闭时自动降级为页内浮窗）
   const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
-  const webOrigin = (process.env.DSH_WEB_URL
-    ?? (webServer.getOrigin?.() ?? `http://127.0.0.1:${String(webServer.port ?? 3080)}`)).replace(/\/+$/, '')
   const materialAssets = createMaterialAssets({ stores, origin: () => webOrigin })
   const nativeLocale: 'zh' | 'en' = (process.env.DSH_LOCALE ?? '').toLowerCase().startsWith('en') ? 'en' : 'zh'
   const windowPage = createWindowPage({ locale: nativeLocale })
@@ -368,6 +379,13 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     ...(approvalBridge === undefined ? {} : { nativeApprovals: approvalBridge }),
     ...(questionBridge === undefined ? {} : { nativeQuestions: questionBridge }),
   })
+  broadcastWorkspaceSnapshot = async () => {
+    try {
+      sse.broadcast('snapshot', await api.snapshot())
+    } catch (error) {
+      logger.warn?.(`[commander] workspace snapshot broadcast failed: ${String((error as Error)?.message ?? error)}`)
+    }
+  }
   ctx.effect(() => {
     const disposeRegistration = registerCommanderApi(webServer, api)
     // 路由先就位再拉起壳，避免首个 /commander/window 请求 404。

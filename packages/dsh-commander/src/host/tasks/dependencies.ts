@@ -32,6 +32,15 @@ export function dependentsOf(tasks: readonly TaskRecord[], taskId: string): Task
   return tasks.filter((task) => task.id !== taskId && (task.dependsOn ?? []).includes(taskId))
 }
 
+/**
+ * 是否仍有「未终结」的后继任务（宽松版，用户 2026-11-27 确认）：
+ * done/cancelled/archived 视为已终结，其余（draft/proposed/queued/running/blocked/review）都算。
+ * 用于 commander_task_accept 的放行守卫：没有后继的任务只能由人验收。
+ */
+export function hasPendingDependents(tasks: readonly TaskRecord[], taskId: string): boolean {
+  return dependentsOf(tasks, taskId).some((task) => task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'archived')
+}
+
 /** 可提醒/可派发的后继：依赖它的任务里 ready 且仍在 draft/proposed 的。 */
 export function readyDependentsOf(tasks: readonly TaskRecord[], taskId: string, lookup: TaskLookup): TaskRecord[] {
   return dependentsOf(tasks, taskId)

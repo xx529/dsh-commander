@@ -8,7 +8,7 @@
  */
 import type { HostObservable } from './types'
 import type {
-  ApiFailure, ArchiveListResult, BindingRequest, BoardPatchRequest, BoardPatchResult, ChatMessage, ConfigPatch, ConfigView,
+  ApiFailure, ArchiveListResult, ArchiveQuery, BindingRequest, BoardPatchRequest, BoardPatchResult, ChatMessage, ConfigPatch, ConfigView,
   ConnectionPhase, EntryPosition, JevTestResult, RotationResult, SendResult, SessionListResult, TaskDetailView, TaskView, UiConfig, WorkspacePatch,
   WorkspaceView, WriteResult,
 } from './types'
@@ -85,14 +85,14 @@ export interface CommanderStore extends HostObservable<CommanderView> {
   archiveTask(taskId: string): Promise<WriteResult<TaskView>>
   /** `POST /commander/tasks/:id/restore` (archived → draft). */
   restoreTask(taskId: string): Promise<WriteResult<TaskView>>
-  /** `POST /commander/tasks/:id/accept` — human-only review→done. */
-  acceptTask(taskId: string): Promise<WriteResult<TaskView>>
+  /** `POST /commander/tasks/:id/accept` — human-only review→done; optional handoff note. */
+  acceptTask(taskId: string, note?: string): Promise<WriteResult<TaskView>>
   /** `POST /commander/tasks/:id/cancel` — human-only non-terminal → cancelled. */
   cancelTask(taskId: string): Promise<WriteResult<TaskView>>
   /** `POST /commander/tasks/:id/rework` — human-only review→running with a comment. */
   reworkTask(taskId: string, comment?: string): Promise<WriteResult<TaskView>>
-  /** `GET /commander/archive?limit=` — trash list. */
-  loadArchive(): Promise<WriteResult<ArchiveListResult>>
+  /** `GET /commander/archive?limit=&cursor=&q=&status=&workspaceId=&from=&to=` — trash list. */
+  loadArchive(query?: ArchiveQuery): Promise<WriteResult<ArchiveListResult>>
   /** R1：`POST /commander/rotation` — 手动/立即换任（force=true 跳过周期与活动判定）。 */
   rotateCommander(force?: boolean): Promise<WriteResult<RotationResult>>
   clearNotice(): void
@@ -528,12 +528,12 @@ export function createCommanderStore(options: CommanderStoreOptions = {}): Comma
     return { ok: true, data: result.data }
   }
 
-  async function loadArchive(): Promise<WriteResult<ArchiveListResult>> {
-    return fetchArchive(baseUrl)
+  async function loadArchive(query: ArchiveQuery = {}): Promise<WriteResult<ArchiveListResult>> {
+    return fetchArchive(baseUrl, query)
   }
 
-  async function acceptTask(taskId: string): Promise<WriteResult<TaskView>> {
-    const result = await requestAcceptTask(baseUrl, taskId)
+  async function acceptTask(taskId: string, note?: string): Promise<WriteResult<TaskView>> {
+    const result = await requestAcceptTask(baseUrl, taskId, note)
     if (result.ok === false) {
       const failure = result.status === 404 || result.status === 405
         ? { ok: false as const, code: 'route_missing', message: '验收接口不可用（请升级 dsh-commander Host 后重试）' }

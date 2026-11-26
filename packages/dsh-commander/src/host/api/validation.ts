@@ -64,7 +64,9 @@ export interface ConfigPatch {
   commander?: {
     model?: { provider?: string; model?: string; reasoningEffort?: string }
     agentPreset?: string
-    rotation?: { enabled?: boolean; periodDays?: number; includeUserTail?: boolean }
+    /** 是否允许指挥官验收有下游的任务；缺省开。 */
+    allowCommanderAccept?: boolean
+    rotation?: { enabled?: boolean; periodDays?: number; includeUserTail?: boolean; toolAudit?: boolean }
   }
   jev?: { endpoint?: string; model?: string; apiKeyEnv?: string; threshold?: number; workspaceThreshold?: number; sessionThreshold?: number; timeoutMs?: number; autoDispatch?: boolean }
   ui?: {
@@ -86,7 +88,7 @@ export function validateConfigPatch(body: unknown): ConfigPatch {
   if (requestId !== null) patch.requestId = requestId
   if (record.commander !== undefined) {
     const commander = requireObject(record.commander)
-    rejectUnknown(commander, ['model', 'agentPreset', 'rotation'], 'commander')
+    rejectUnknown(commander, ['model', 'agentPreset', 'allowCommanderAccept', 'rotation'], 'commander')
     if (commander.sessionId !== undefined || commander.workspaceId !== undefined) throw invalid('binding fields are managed by POST /commander/binding', 'commander.sessionId')
     const out: NonNullable<ConfigPatch['commander']> = {}
     if (commander.model !== undefined) {
@@ -111,10 +113,14 @@ export function validateConfigPatch(body: unknown): ConfigPatch {
       if (!isString(commander.agentPreset, 0, 64)) throw invalid('agentPreset must be ≤64 chars', 'commander.agentPreset')
       out.agentPreset = commander.agentPreset
     }
+    if (commander.allowCommanderAccept !== undefined) {
+      if (typeof commander.allowCommanderAccept !== 'boolean') throw invalid('allowCommanderAccept must be a boolean', 'commander.allowCommanderAccept')
+      out.allowCommanderAccept = commander.allowCommanderAccept
+    }
     if (commander.rotation !== undefined) {
       const rotation = requireObject(commander.rotation)
       // generation/generationStartedAt 由 Host 管理，出现在 patch 里按未知字段拒绝。
-      rejectUnknown(rotation, ['enabled', 'periodDays', 'includeUserTail'], 'commander.rotation')
+      rejectUnknown(rotation, ['enabled', 'periodDays', 'includeUserTail', 'toolAudit'], 'commander.rotation')
       const rotationOut: NonNullable<NonNullable<ConfigPatch['commander']>['rotation']> = {}
       if (rotation.enabled !== undefined) {
         if (typeof rotation.enabled !== 'boolean') throw invalid('enabled must be a boolean', 'commander.rotation.enabled')
@@ -129,6 +135,10 @@ export function validateConfigPatch(body: unknown): ConfigPatch {
       if (rotation.includeUserTail !== undefined) {
         if (typeof rotation.includeUserTail !== 'boolean') throw invalid('includeUserTail must be a boolean', 'commander.rotation.includeUserTail')
         rotationOut.includeUserTail = rotation.includeUserTail
+      }
+      if (rotation.toolAudit !== undefined) {
+        if (typeof rotation.toolAudit !== 'boolean') throw invalid('toolAudit must be a boolean', 'commander.rotation.toolAudit')
+        rotationOut.toolAudit = rotation.toolAudit
       }
       if (Object.keys(rotationOut).length > 0) out.rotation = rotationOut
     }

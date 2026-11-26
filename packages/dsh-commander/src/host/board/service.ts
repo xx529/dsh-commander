@@ -1,9 +1,9 @@
 // M2 看板 Host 半（m2m3-contract-patch §2.3–§2.7；task-state-machine-final §5.7/§8）：
 // 人工 PATCH 只允许 priority/title → tasks + board_edits → 30s 一次性合并注入 [board-edit]；
-// archive/restore 走统一迁移入口；stale 只读派生；任务详情 boardEdits 摘要。
+// archive/restore 走统一迁移入口；任务详情 boardEdits 摘要。
 // 状态推进不走看板 PATCH：accept/archive/restore/cancel 是人专用路由，其余由 commander 工具/宿主事件完成。
 import { createHash } from 'node:crypto'
-import { ARCHIVE_LIST_MAX, BOARD_EDIT_MERGE_MS, BOARD_EDITS_DETAIL_MAX, BOARD_TITLE_MAX, STALE_AFTER_MS } from '../config.ts'
+import { ARCHIVE_LIST_MAX, BOARD_EDIT_MERGE_MS, BOARD_EDITS_DETAIL_MAX, BOARD_TITLE_MAX } from '../config.ts'
 import type { BoardEditRecord, Priority, TaskRecord, TaskStatus } from '../schema.ts'
 import type { StoreSet } from '../store/index.ts'
 import type { CordisContext } from '../dsh-types.ts'
@@ -50,12 +50,6 @@ interface MergeRecord {
   timer: ReturnType<typeof setTimeout> | undefined
 }
 
-/** stale 只读派生：queued/running 且 now-lastActivityAt > 20min。 */
-export function taskIsStale(task: TaskRecord, now: number): boolean {
-  if (task.status !== 'queued' && task.status !== 'running') return false
-  return now - task.lastActivityAt > STALE_AFTER_MS
-}
-
 export function boardEditInjectionKey(taskId: string, editIds: string[]): string {
   return createHash('sha1').update(`${taskId}\0${[...editIds].sort().join(',')}`).digest('hex')
 }
@@ -90,15 +84,36 @@ export type BoardTaskActionResult =
   | { ok: false; conflict: true; message: string }
   | { ok: false; invalid: true; message: string }
 
+export interface ArchiveListOptions {
+  limit?: number
+  cursor?: number
+  /** 标题或 id 的大小写不敏感子串（已 trim，≤100）。 */
+  q?: string
+  status?: 'archived' | 'cancelled'
+  workspaceId?: string
+  /** updatedAt 毫秒，含。 */
+  from?: number
+  /** updatedAt 毫秒，不含。 */
+  to?: number
+}
+
+export interface ArchiveListPage {
+  tasks: TaskRecord[]
+  nextCursor: number | null
+  total: number
+  summary: { archivedCount: number; cancelledCount: number; last30dCount: number }
+  /** 月份导航：应用 q/status/workspaceId，忽略 from/to；key 为 Host 本地 YYYY-MM，倒序。 */
+  months: Array<{ key: string; count: number }>
+}
+
 export interface BoardService {
   patchTask(taskId: string, input: PatchBoardInput): Promise<PatchBoardResult>
   archiveTask(taskId: string): Promise<BoardTaskActionResult>
   restoreTask(taskId: string): Promise<BoardTaskActionResult>
   /** 人专用取消：先停 running/queued 会话，失败不落状态；清 pending/block。 */
   cancelTask(taskId: string): Promise<BoardTaskActionResult>
-  listArchive(options: { limit?: number; cursor?: number }): { tasks: TaskRecord[]; nextCursor: number | null }
+  listArchive(options: ArchiveListOptions): ArchiveListPage
   detailBoardEdits(taskId: string): BoardEditView[]
-  staleOf(task: TaskRecord): boolean
   /** 启动补注入一次（injectedAt 为空且 at<now 的 edit；失败不风暴）。 */
   backfill(): Promise<void>
   dispose(): void
@@ -106,6 +121,12 @@ export interface BoardService {
 }
 
 const asString = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined)
+
+/** 归档月份 key（Host 本地时区）；与 Client 展示一致。 */
+function monthKeyOf(ms: number): string {
+  const date = new Date(ms)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
 
 export function createBoardService(deps: BoardServiceDeps): BoardService {
   const now = deps.now ?? (() => Date.now())
@@ -307,14 +328,45 @@ export function createBoardService(deps: BoardServiceDeps): BoardService {
     listArchive(options) {
       const limit = Math.min(Math.max(Number.isInteger(options.limit) ? (options.limit as number) : 50, 1), ARCHIVE_LIST_MAX)
       const cursor = typeof options.cursor === 'number' && Number.isFinite(options.cursor) ? options.cursor : undefined
-      const rows = deps.stores.tasks
+      const q = (options.q ?? '').trim().toLowerCase()
+      const base = deps.stores.tasks
         .list()
         .filter((task) => task.status === 'archived' || task.status === 'cancelled')
-        .filter((task) => (cursor === undefined ? true : task.updatedAt < cursor))
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-      const page = rows.slice(0, limit)
-      const nextCursor = rows.length > limit ? (page[page.length - 1]?.updatedAt ?? null) : null
-      return { tasks: page, nextCursor }
+      // 月份导航只看 q/status/workspaceId，不看 from/to，避免选完一个月导航只剩一个月。
+      const metaMatched = base.filter((task) => (
+        (options.status === undefined || task.status === options.status)
+        && (options.workspaceId === undefined || task.workspaceId === options.workspaceId)
+        && (q === '' || task.title.toLowerCase().includes(q) || task.id.toLowerCase().includes(q))
+      ))
+      const inRange = (task: TaskRecord): boolean => (
+        (options.from === undefined || task.updatedAt >= options.from)
+        && (options.to === undefined || task.updatedAt < options.to)
+      )
+      const filtered = metaMatched.filter(inRange)
+      const sorted = [...filtered].sort((a, b) => b.updatedAt - a.updatedAt)
+      const afterCursor = cursor === undefined ? sorted : sorted.filter((task) => task.updatedAt < cursor)
+      const page = afterCursor.slice(0, limit)
+      const nextCursor = afterCursor.length > limit ? (page[page.length - 1]?.updatedAt ?? null) : null
+      const monthCounts = new Map<string, number>()
+      for (const task of metaMatched) {
+        const key = monthKeyOf(task.updatedAt)
+        monthCounts.set(key, (monthCounts.get(key) ?? 0) + 1)
+      }
+      const months = [...monthCounts.entries()]
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.key.localeCompare(a.key))
+      const recentFrom = now() - 30 * 86_400_000
+      return {
+        tasks: page,
+        nextCursor,
+        total: filtered.length,
+        summary: {
+          archivedCount: filtered.filter((task) => task.status === 'archived').length,
+          cancelledCount: filtered.filter((task) => task.status === 'cancelled').length,
+          last30dCount: filtered.filter((task) => task.updatedAt >= recentFrom).length,
+        },
+        months,
+      }
     },
 
     detailBoardEdits(taskId) {
@@ -324,10 +376,6 @@ export function createBoardService(deps: BoardServiceDeps): BoardService {
         .sort((a, b) => b.at - a.at)
         .slice(0, BOARD_EDITS_DETAIL_MAX)
         .map((edit) => ({ editId: edit.id, field: edit.field, before: edit.before, after: edit.after, at: edit.at, injectedAt: edit.injectedAt ?? null }))
-    },
-
-    staleOf(task) {
-      return taskIsStale(task, now())
     },
 
     async backfill() {

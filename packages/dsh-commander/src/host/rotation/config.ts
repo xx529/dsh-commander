@@ -11,6 +11,8 @@ export interface ResolvedRotation {
   enabled: boolean
   periodDays: number
   includeUserTail: boolean
+  /** 换代后是否给新会话预置 dsh-trace-inspect 的工具审计（默认 true；插件缺失时自动跳过）。 */
+  toolAudit: boolean
   generation: number
   generationStartedAt: number
   /** 旧配置没有 rotation 字段（读取归一化，不写盘）。 */
@@ -30,6 +32,7 @@ export function resolveRotation(config: ConfigRecord): ResolvedRotation {
     enabled: raw?.enabled === true,
     periodDays: clampPeriodDays(raw?.periodDays),
     includeUserTail: raw?.includeUserTail !== false,
+    toolAudit: raw?.toolAudit !== false,
     generation: typeof raw?.generation === 'number' && raw.generation >= 1 ? Math.floor(raw.generation) : 1,
     generationStartedAt:
       typeof raw?.generationStartedAt === 'number' && raw.generationStartedAt > 0
@@ -86,6 +89,7 @@ export function patchRotation(current: RotationConfig | undefined, patch: Partia
     enabled: current?.enabled === true,
     periodDays: clampPeriodDays(current?.periodDays),
     includeUserTail: current?.includeUserTail !== false,
+    toolAudit: current?.toolAudit !== false,
     generation: current?.generation ?? 1,
     generationStartedAt: current?.generationStartedAt ?? now,
   }

@@ -39,6 +39,61 @@ export interface TaskActionDeps {
   dependencyNotifier?: Pick<DependencyNotifier, 'afterAccepted'>
 }
 
+export interface AcceptOptions {
+  /** 验收交接说明（≤1000 字）；空白视为无。 */
+  note?: string
+  /** 验收来源：人（缺省）或指挥官工具。 */
+  actor?: 'user' | 'commander'
+}
+
+export type AcceptDeps = Omit<Pick<TaskActionDeps, 'stores' | 'now' | 'onTaskChanged' | 'onTaskSettled' | 'dependencyNotifier'>, 'dependencyNotifier'> & {
+  dependencyNotifier?: Partial<Pick<DependencyNotifier, 'afterAccepted'>>
+}
+
+/**
+ * accept（review→done）的唯一实现：人路由与 commander_task_accept 共用。
+ * 交接说明 acceptNote 与 acceptedBy 在同一次 CAS 写入里落库；
+ * 幂等（已 done）时不覆盖已有 acceptNote，也不重复注入依赖提醒。
+ */
+export async function performAccept(deps: AcceptDeps, taskId: string, options: AcceptOptions = {}): Promise<TaskActionResult> {
+  const now = deps.now ?? (() => Date.now())
+  const noteText = typeof options.note === 'string' ? options.note.trim() : ''
+  if (noteText.length > REWORK_COMMENT_MAX) {
+    return { ok: false, kind: 'invalid_request', message: `note exceeds ${REWORK_COMMENT_MAX} characters` }
+  }
+  const byCommander = options.actor === 'commander'
+  const task = deps.stores.tasks.get(taskId)
+  if (task === undefined) return { ok: false, kind: 'not_found', message: `task '${taskId}' not found` }
+  if (task.status === 'done') return { ok: true, task, duplicate: true }
+  if (task.status !== 'review') return { ok: false, kind: 'conflict', message: `只能 review→done，当前 ${task.status}` }
+  // 人已确认验收：acceptance 为空只可能是历史脏数据（旧版 commander_task_update 允许 `status=review` 无验收项，
+  // 写入侧已修）。这里不再 409 卡住人，改为在 timeline 明确标注，避免任务永远无法收尾。
+  const emptyAcceptance = task.acceptance.length < 1
+  const round = task.round ?? 1
+  const digest = noteText !== '' ? `，交接说明：${noteText.slice(0, 200)}` : ''
+  const source = byCommander ? '（指挥官验收）' : ''
+  const timelineText = emptyAcceptance
+    ? `第 ${round} 轮验收通过（无验收项：历史数据）${source}${digest}`
+    : `第 ${round} 轮验收通过${source}${digest}`
+  const transition = await transitionTask({ stores: deps.stores, now, ...(deps.onTaskChanged !== undefined ? { onTaskChanged: deps.onTaskChanged } : {}) }, {
+    taskId,
+    to: 'done',
+    actor: byCommander ? 'commander_accept' : 'user_accept',
+    timelineType: 'accept',
+    round,
+    timelineText,
+    mutate: (_current, at) => ({
+      acceptedBy: byCommander ? ('commander' as const) : ('user' as const),
+      ...(noteText !== '' ? { acceptNote: { text: noteText, at, round } } : {}),
+    }),
+  })
+  if (!transition.ok) return { ok: false, kind: 'conflict', message: transition.code === 'not_found' ? `task '${taskId}' not found` : transition.message }
+  deps.onTaskSettled?.(taskId)
+  // 首次成功才提醒；幂等重复 accept 不重复注入 [task-unblocked]。
+  if (transition.changed) await deps.dependencyNotifier?.afterAccepted?.(taskId)
+  return { ok: true, task: transition.task, duplicate: !transition.changed }
+}
+
 const CONTINUE_REQUEST_TTL_MS = 5 * 60 * 1000
 
 export function buildContinueRequestText(task: TaskRecord, comment: string): string {
@@ -47,7 +102,7 @@ export function buildContinueRequestText(task: TaskRecord, comment: string): str
     `[task-continue] taskId=${task.id} round=${round} status=review`,
     `用户在任务看板对「${task.title}」请求继续派发/返工：`,
     comment,
-    `请调用 commander_task_dispatch(taskId, instruction=<批注>, requestId=<新ID>) 继续派发；默认推荐原会话，也可以改选新工作区/新会话。确认后任务进入第 ${round + 1} 轮。`,
+    `请调用 commander_task_dispatch(taskId, prompt=<你写给工作会话的全文，必须包含上面批注原文>, requestId=<新ID>) 继续派发；默认推荐原会话，也可以改选新工作区/新会话。确认后任务进入第 ${round + 1} 轮。`,
     '---',
     `requestId=continue-${task.id}-${round + 1}`,
   ].join('\n')
@@ -78,28 +133,8 @@ export function createTaskActions(deps: TaskActionDeps) {
   }
 
   return {
-    async accept(taskId: string): Promise<TaskActionResult> {
-      const task = deps.stores.tasks.get(taskId)
-      if (task === undefined) return { ok: false, kind: 'not_found', message: `task '${taskId}' not found` }
-      if (task.status === 'done') return { ok: true, task, duplicate: true }
-      if (task.status !== 'review') return { ok: false, kind: 'conflict', message: `只能 review→done，当前 ${task.status}` }
-      // 人已确认验收：acceptance 为空只可能是历史脏数据（旧版 commander_task_update 允许 `status=review` 无验收项，
-      // 写入侧已修）。这里不再 409 卡住人，改为在 timeline 明确标注，避免任务永远无法收尾。
-      const emptyAcceptance = task.acceptance.length < 1
-      const round = task.round ?? 1
-      const transition = await transitionTask({ stores: deps.stores, now, ...(deps.onTaskChanged !== undefined ? { onTaskChanged: deps.onTaskChanged } : {}) }, {
-        taskId,
-        to: 'done',
-        actor: 'user_accept',
-        timelineType: 'accept',
-        round,
-        timelineText: emptyAcceptance ? `第 ${round} 轮验收通过（无验收项：历史数据）` : `第 ${round} 轮验收通过`,
-      })
-      if (!transition.ok) return { ok: false, kind: 'conflict', message: transition.code === 'not_found' ? `task '${taskId}' not found` : transition.message }
-      deps.onTaskSettled?.(taskId)
-      // 首次成功才提醒；幂等重复 accept 不重复注入 [task-unblocked]。
-      if (transition.changed) await deps.dependencyNotifier?.afterAccepted(taskId)
-      return { ok: true, task: transition.task, duplicate: !transition.changed }
+    async accept(taskId: string, options: AcceptOptions = {}): Promise<TaskActionResult> {
+      return performAccept(deps, taskId, options)
     },
 
     /**

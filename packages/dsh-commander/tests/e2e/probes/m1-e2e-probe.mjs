@@ -17,6 +17,9 @@ export const name = 'm1-e2e-probe'
 export const inject = ['llm', 'workspaceRegistry', 'agents']
 
 const PROVIDER = 'probe-stub'
+/** 探针模拟「指挥官自己写的工作会话原文」；工作会话侧靠这个标记识别自己是工作会话。 */
+const WORKER_MARKER = 'M1E2E_WORKER'
+const WORKER_PROMPT = `${WORKER_MARKER} 任务标题/目标/验收提示由指挥官自己写；结束时说明产出与证据。`
 const MODEL = 'stub-1'
 
 const blockText = (message) => {
@@ -86,12 +89,12 @@ export function plannedAction(messages) {
   }
   if (text.includes('M1E2E_DISPATCH_IDEMP')) {
     const taskId = idAfter('M1E2E_DISPATCH_IDEMP')
-    if (toolCount === 0 && taskId !== '') return { kind: 'tool-call', name: 'commander_task_dispatch', args: { taskId, requestId: 'req_m1_idem_1', capabilityNeeds: ['e2e'] } }
+    if (toolCount === 0 && taskId !== '') return { kind: 'tool-call', name: 'commander_task_dispatch', args: { taskId, requestId: 'req_m1_idem_1', prompt: WORKER_PROMPT, capabilityNeeds: ['e2e'] } }
     return { kind: 'text', text: 'm1-e2e-dispatch-idempotent' }
   }
   if (text.includes('M1E2E_DISPATCH')) {
     const taskId = idAfter('M1E2E_DISPATCH')
-    if (toolCount === 0 && taskId !== '') return { kind: 'tool-call', name: 'commander_task_dispatch', args: { taskId, requestId: `req_m1_first_${Date.now()}`, capabilityNeeds: ['e2e'] } }
+    if (toolCount === 0 && taskId !== '') return { kind: 'tool-call', name: 'commander_task_dispatch', args: { taskId, requestId: `req_m1_first_${Date.now()}`, prompt: WORKER_PROMPT, capabilityNeeds: ['e2e'] } }
     return { kind: 'text', text: 'm1-e2e-needs-confirmation' }
   }
   if (text.includes('M1E2E_CONFIRM')) {
@@ -122,10 +125,10 @@ export function plannedAction(messages) {
     }
     return { kind: 'text', text: 'm1-e2e-organized' }
   }
-  // 工作会话 brief（turn/end 注入验收：长回复触发 8KB 截断）。
-  // DSH 会在用户消息后追加运行时上下文 user 消息 → 在全部 user 消息中查找 brief 前缀。
+  // 工作会话收到的原文（turn/end 注入验收：长回复触发 8KB 截断）。
+  // DSH 会在用户消息后追加运行时上下文 user 消息 → 在全部 user 消息中查找探针自己写的 prompt 标记。
   const allUserText = (messages ?? []).filter((message) => message?.role === 'user').map((message) => blockText(message)).join('\n')
-  if (allUserText.includes('你是工作会话') && !text.includes('M1E2E_')) {
+  if (allUserText.includes(WORKER_MARKER)) {
     return { kind: 'text', text: `HEAD-${'x'.repeat(9000)}-TAIL` }
   }
   if (allUserText.includes('上一轮验收未通过') && !text.includes('M1E2E_')) {

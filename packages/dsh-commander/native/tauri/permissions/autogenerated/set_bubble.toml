@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-bubble"
+description = "Enables the set_bubble command without any pre-configured scope."
+commands.allow = ["set_bubble"]
+
+[[permission]]
+identifier = "deny-set-bubble"
+description = "Denies the set_bubble command without any pre-configured scope."
+commands.deny = ["set_bubble"]

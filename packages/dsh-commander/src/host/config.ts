@@ -119,16 +119,12 @@ export function resolveJevThresholds(jev: {
     session: typeof jev.sessionThreshold === 'number' ? jev.sessionThreshold : legacy ?? DEFAULT_JEV.sessionThreshold,
   }
 }
-/** 派发 brief 长度上限。 */
-export const DISPATCH_BRIEF_MAX_CHARS = 8192
 /** M2：看板人工改动注入合并窗口（一次性 timer，非 scheduler）。 */
 export const BOARD_EDIT_MERGE_MS = 30_000
 /** M2：任务详情 boardEdits 摘要条数。 */
 export const BOARD_EDITS_DETAIL_MAX = 20
 /** M2：回收站列表上限。 */
 export const ARCHIVE_LIST_MAX = 100
-/** M2：疑似停滞阈值（queued/running 且 now-lastActivityAt > 20min，只读派生）。 */
-export const STALE_AFTER_MS = 20 * 60 * 1000
 /** M2：人工改板标题长度上限。 */
 export const BOARD_TITLE_MAX = 200
 /** M3：turn/end 注入文本上限（整条，含元数据行与截断标记；不得超投递上限 PROMPT_TEXT_MAX=8192）。 */

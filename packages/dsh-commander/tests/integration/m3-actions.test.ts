@@ -140,3 +140,47 @@ test('session/event turn/end 经 apply 装配的 injector 注入 [session-reply]
   await sleep(80)
   assert.equal(host.controller.prompts.filter((item) => String((item.content as Array<{ text: string }>)[0]?.text ?? '').includes('[session-reply]')).length, 1)
 })
+
+test('POST accept with note: writes acceptNote/acceptedBy=user and keeps the note on duplicate accept', async () => {
+  const host = await setup()
+  seedReview(host.stores)
+  const accepted = await host.webServer.invoke('POST', '/commander/tasks/task_m3_1/accept', { note: '结论：接口沿用 v2，交给下一任务时注意兼容' })
+  assert.equal(accepted.status, 200)
+  const body = accepted.body as { task: { status: string; acceptNote?: { text?: string }; acceptedBy?: string; timeline: Array<{ type: string; text: string }> } }
+  assert.equal(body.task.status, 'done')
+  assert.equal(body.task.acceptedBy, 'user')
+  assert.equal(body.task.acceptNote?.text, '结论：接口沿用 v2，交给下一任务时注意兼容')
+  assert.ok(body.task.timeline.some((item) => item.type === 'accept' && item.text.includes('交接说明')))
+
+  const again = await host.webServer.invoke('POST', '/commander/tasks/task_m3_1/accept', { note: '不应覆盖' })
+  assert.equal(again.status, 200)
+  assert.equal((again.body as { duplicate: boolean }).duplicate, true)
+  assert.equal(host.stores.tasks.get('task_m3_1')?.acceptNote?.text, '结论：接口沿用 v2，交给下一任务时注意兼容')
+})
+
+test('POST accept note validation: non-string 400, over-long 400', async () => {
+  const host = await setup()
+  seedReview(host.stores)
+  const badType = await host.webServer.invoke('POST', '/commander/tasks/task_m3_1/accept', { note: 42 })
+  assert.equal(badType.status, 400)
+  const tooLong = await host.webServer.invoke('POST', '/commander/tasks/task_m3_1/accept', { note: 'x'.repeat(1001) })
+  assert.equal(tooLong.status, 400)
+  assert.equal(host.stores.tasks.get('task_m3_1')?.status, 'review')
+})
+
+test('GET task detail exposes acceptNote/acceptedBy/hasPendingDependents', async () => {
+  const host = await setup()
+  seedReview(host.stores)
+  void host.stores.tasks.put({
+    v: 1, id: 'task_m3_next', title: 'B', goal: 'B', status: 'draft', workspaceId: 'ws-a', priority: 'normal',
+    commandId: '', assignments: [], acceptance: [], dependsOn: ['task_m3_1'],
+    timeline: [{ at: 1, type: 'created', text: 'created' }], version: 1, createdAt: 1, updatedAt: 1, lastActivityAt: 1,
+  })
+  await host.webServer.invoke('POST', '/commander/tasks/task_m3_1/accept', { note: '交接：B 要用新接口' })
+  const detail = await host.webServer.invoke('GET', '/commander/tasks/task_m3_1', undefined)
+  assert.equal(detail.status, 200)
+  const body = detail.body as { task: { acceptNote?: { text?: string }; acceptedBy?: string; hasPendingDependents?: boolean } }
+  assert.equal(body.task.acceptNote?.text, '交接：B 要用新接口')
+  assert.equal(body.task.acceptedBy, 'user')
+  assert.equal(body.task.hasPendingDependents, true)
+})

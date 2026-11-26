@@ -10,6 +10,7 @@ export type TransitionActor =
   | 'host_dispatch'
   | 'host_turn'
   | 'commander_tool'
+  | 'commander_accept'
   | 'user_accept'
   | 'user_archive'
   | 'user_restore'
@@ -69,7 +70,7 @@ const EDGE_ACTORS: Readonly<Record<string, readonly TransitionActor[]>> = {
   'blocked>cancelled': ['commander_tool', 'user_cancel'],
   'review>queued': ['host_dispatch'],
   'review>blocked': ['host_dispatch'],
-  'review>done': ['user_accept'],
+  'review>done': ['user_accept', 'commander_accept'],
   'review>cancelled': ['commander_tool', 'user_cancel'],
   'review>archived': ['user_archive'],
   'done>archived': ['user_archive'],

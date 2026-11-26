@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-ball-unread"
+description = "Enables the set_ball_unread command without any pre-configured scope."
+commands.allow = ["set_ball_unread"]
+
+[[permission]]
+identifier = "deny-set-ball-unread"
+description = "Denies the set_ball_unread command without any pre-configured scope."
+commands.deny = ["set_ball_unread"]

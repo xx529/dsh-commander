@@ -150,16 +150,6 @@ export function trashTasks(tasks: readonly TaskView[]): TaskView[] {
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
 }
 
-/** Stale flag: prefer the Host-derived value, else recompute from lastActivityAt. */
-export function isStaleTask(task: TaskView, now: number, staleAfterMs = 20 * 60 * 1_000): boolean {
-  if (task.stale === true) return true
-  const status = task.status ?? ''
-  if (status !== 'queued' && status !== 'running') return false
-  const last = task.lastActivityAt ?? task.updatedAt
-  if (typeof last !== 'number' || last <= 0) return false
-  return now - last > staleAfterMs
-}
-
 /** Archive is allowed from review/done/cancelled only (m2m3 patch §2.5). */
 export function canArchiveTask(task: TaskView): boolean {
   return ['review', 'done', 'cancelled'].includes(task.status ?? '')
@@ -578,4 +568,221 @@ export function buildTaskRounds(task: TaskView, detail: TaskDetailView): TaskRou
     })
   }
   return rounds
+}
+
+/**
+ * 依赖图的连通分量（包含自身）：沿 dependsOn 双向（前置 ⇄ 下游）做 BFS。
+ *
+ * 不是「只走本节点的上下游」：同一张依赖图里，`C 依赖 A 和 B` 时鼠标落在 A 上
+ * 也要把兄弟前置 B 一起点亮，否则同一张图会按悬停的节点忽大忽小
+ * （用户反馈：悬停 C 高亮 A+B，悬停 A 只高亮 C）。
+ */
+export function dependencyClosure(tasks: readonly TaskView[], taskId: string): ReadonlySet<string> {
+  const neighbors = new Map<string, string[]>()
+  const link = (id: string, other: string): void => {
+    const list = neighbors.get(id) ?? []
+    if (!list.includes(other)) list.push(other)
+    neighbors.set(id, list)
+  }
+  for (const task of tasks) {
+    for (const dep of task.dependsOn ?? []) {
+      link(task.id, dep)
+      link(dep, task.id)
+    }
+  }
+  const seen = new Set<string>([taskId])
+  const queue: string[] = [taskId]
+  for (let head = 0; head < queue.length; head += 1) {
+    const id = queue[head]
+    if (id === undefined) continue
+    for (const next of neighbors.get(id) ?? []) {
+      if (seen.has(next)) continue
+      seen.add(next)
+      queue.push(next)
+    }
+  }
+  return seen
+}
+
+/** 每个任务被多少个任务依赖（卡片「下游 N」）。 */
+export function downstreamCounts(tasks: readonly TaskView[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const task of tasks) {
+    for (const dep of task.dependsOn ?? []) counts.set(dep, (counts.get(dep) ?? 0) + 1)
+  }
+  return counts
+}
+
+/** 本地时区的归档月份 key（YYYY-MM），与 Host 月份导航一致。 */
+export function archiveMonthKey(at: number): string {
+  const date = new Date(at)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** 月份 key → [from, to)：本地自然月，用作 archive 的 from/to。 */
+export function archiveMonthBounds(key: string): { from: number; to: number } {
+  const [yearRaw, monthRaw] = key.split('-')
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  return { from: new Date(year, month - 1, 1).getTime(), to: new Date(year, month, 1).getTime() }
+}
+
+/** 回收站按「月 → 日」分组；tasks 已按 updatedAt 倒序，保持顺序。 */
+export interface ArchiveDayGroup {
+  key: string
+  at: number
+  tasks: TaskView[]
+}
+export interface ArchiveMonthGroup {
+  key: string
+  days: ArchiveDayGroup[]
+}
+export function groupArchiveByMonthDay(tasks: readonly TaskView[]): ArchiveMonthGroup[] {
+  const months: ArchiveMonthGroup[] = []
+  for (const task of [...tasks].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))) {
+    const at = task.updatedAt ?? 0
+    const monthKey = archiveMonthKey(at)
+    const date = new Date(at)
+    const dayKey = `${monthKey}-${String(date.getDate()).padStart(2, '0')}`
+    let month = months.find((row) => row.key === monthKey)
+    if (month === undefined) {
+      month = { key: monthKey, days: [] }
+      months.push(month)
+    }
+    let day = month.days.find((row) => row.key === dayKey)
+    if (day === undefined) {
+      day = { key: dayKey, at, tasks: [] }
+      month.days.push(day)
+    }
+    day.tasks.push(task)
+  }
+  return months
+}
+
+/**
+ * 回收站数量（tab 徽标 / 「全量 N 条」）：counts 是全域权威计数，tasks 只在旧快照
+ * 缺 counts 时兜底；两者按状态取 max，避免 cancelled 同时在 counts 与 tasks 中被算两次。
+ */
+export function archiveCount(input: { counts?: Readonly<Record<string, number | undefined>>; tasks: readonly TaskView[] }): number {
+  const counts = input.counts ?? {}
+  const archivedInTasks = input.tasks.filter((task) => task.status === 'archived').length
+  const cancelledInTasks = input.tasks.filter((task) => task.status === 'cancelled').length
+  return Math.max(counts.archived ?? 0, archivedInTasks) + Math.max(counts.cancelled ?? 0, cancelledInTasks)
+}
+
+/**
+ * 悬停依赖聚焦用的图：只有存在**可见关联**（快照里能找到的同图节点）时才返回连通分量；
+ * 无依赖的卡返回 null，避免「淡出全板但没有任何高亮/连线」的空效果。
+ */
+export function dependencyHighlightChain(tasks: readonly TaskView[], taskId: string): ReadonlySet<string> | null {
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  if (!byId.has(taskId)) return null
+  const chain = dependencyClosure(tasks, taskId)
+  for (const id of chain) {
+    if (id !== taskId && byId.has(id)) return chain
+  }
+  return null
+}
+
+/** 卡片在依赖连线覆盖层坐标系里的矩形（相对看板滚动容器）。 */
+export interface BoardCardBox {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+/** 端点离卡片转角的内缩：卡片圆角 10px，取 12px 让箭头落在直边上而不是圆角上。 */
+const DEP_EDGE_CORNER_INSET = 12
+
+/** 把端点位置夹在卡片的某条边上，避开转角；盒子过小时退化为边中点。 */
+function clampToSide(value: number, lo: number, hi: number): number {
+  const inset = Math.min(DEP_EDGE_CORNER_INSET, (hi - lo) / 2)
+  return Math.min(hi - inset, Math.max(lo + inset, value))
+}
+
+function formatPathPoint(value: number): string {
+  return String(Math.round(value * 10) / 10)
+}
+
+/**
+ * 依赖连线的路径：两卡之间取**最近的一对边**进出——
+ * 纵排（同一列，x 区间重叠）时连上卡的底边与下卡的顶边，跨列时连左右相对的两条竖边；
+ * 端点在该边上朝另一张卡的中心投影（按转角内缩夹住），不再一律钉在边的正中，
+ * 所以上下错开的两张卡会从相近的两个角出发，曲线更短、也不会绕到卡片外侧。
+ */
+export function dependencyEdgePath(from: BoardCardBox, to: BoardCardBox): string {
+  const fromMidX = (from.left + from.right) / 2
+  const fromMidY = (from.top + from.bottom) / 2
+  const toMidX = (to.left + to.right) / 2
+  const toMidY = (to.top + to.bottom) / 2
+  const sameColumn = Math.min(from.right, to.right) > Math.max(from.left, to.left)
+  if (sameColumn) {
+    const downward = toMidY >= fromMidY
+    const sx = clampToSide(toMidX, from.left, from.right)
+    const tx = clampToSide(fromMidX, to.left, to.right)
+    const sy = downward ? from.bottom : from.top
+    const ty = downward ? to.top : to.bottom
+    const control = Math.max(10, Math.abs(ty - sy) * 0.42) * (downward ? 1 : -1)
+    return `M ${formatPathPoint(sx)} ${formatPathPoint(sy)} C ${formatPathPoint(sx)} ${formatPathPoint(sy + control)}, ${formatPathPoint(tx)} ${formatPathPoint(ty - control)}, ${formatPathPoint(tx)} ${formatPathPoint(ty)}`
+  }
+  const rightward = toMidX >= fromMidX
+  const sx = rightward ? from.right : from.left
+  const tx = rightward ? to.left : to.right
+  const sy = clampToSide(toMidY, from.top, from.bottom)
+  const ty = clampToSide(fromMidY, to.top, to.bottom)
+  const control = Math.max(30, Math.abs(tx - sx) * 0.42) * (rightward ? 1 : -1)
+  return `M ${formatPathPoint(sx)} ${formatPathPoint(sy)} C ${formatPathPoint(sx + control)} ${formatPathPoint(sy)}, ${formatPathPoint(tx - control)} ${formatPathPoint(ty)}, ${formatPathPoint(tx)} ${formatPathPoint(ty)}`
+}
+
+/** 看板列宽：默认六列等分；拖动只改相邻两列的 fr 比例。 */
+export const BOARD_COLUMN_COUNT = 6
+export const BOARD_COLUMN_MIN_PX = 180
+export const BOARD_COLUMN_FR_STORAGE_KEY = 'dshc:board-column-fr:v1'
+export const DEFAULT_BOARD_COLUMN_FR: readonly number[] = [1, 1, 1, 1, 1, 1]
+
+/** localStorage 读回的列宽必须是 6 个正数，否则回落默认等分。 */
+export function normalizeBoardColumnFr(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length !== BOARD_COLUMN_COUNT) return null
+  const numbers: number[] = []
+  for (const item of value) {
+    if (typeof item !== 'number' || !Number.isFinite(item) || item <= 0) return null
+    numbers.push(item)
+  }
+  return numbers
+}
+
+/**
+ * 拖动第 index 与 index+1 列之间的分隔条：按 px 位移换算成 fr，总和保持不变，
+ * 两列都不低于 minPx（换算成 minFr）；拖过头时反向补偿，避免总宽漂移。
+ */
+export function resizeBoardColumnFr(
+  fr: readonly number[],
+  index: number,
+  deltaPx: number,
+  availablePx: number,
+  minPx = BOARD_COLUMN_MIN_PX,
+): number[] {
+  const next = [...fr]
+  if (index < 0 || index >= next.length - 1 || availablePx <= 0) return next
+  const sum = next.reduce((total, value) => total + value, 0)
+  if (sum <= 0) return next
+  const minFr = (minPx * sum) / availablePx
+  const deltaFr = (deltaPx * sum) / availablePx
+  let left = (next[index] ?? 1) + deltaFr
+  let right = (next[index + 1] ?? 1) - deltaFr
+  if (left < minFr) {
+    right -= minFr - left
+    left = minFr
+  }
+  if (right < minFr) {
+    left -= minFr - right
+    right = minFr
+  }
+  next[index] = Math.max(minFr, left)
+  next[index + 1] = Math.max(minFr, right)
+  // 极端情况下（两列都无法再压缩）保持总和不变。
+  const drift = sum - next.reduce((total, value) => total + value, 0)
+  next[index] = (next[index] ?? minFr) + drift
+  return next
 }

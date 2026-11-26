@@ -25,6 +25,8 @@ import type {
 import type { ConfigRecord, TaskRecord } from '../schema.ts'
 import { buildHandoffBrief, type BriefUserLine, type HandoffBrief, type HandoffBriefStats } from './brief.ts'
 import { briefWindowStart, resolveRotation, rotationDue, rotationDueAt, type ResolvedRotation } from './config.ts'
+import type { ToolAuditResult } from './tool-audit.ts'
+import { applyRotationTitleDefault, applyToolAuditDefault } from './generation-defaults.ts'
 
 export type RotationPhase = 'idle' | 'due' | 'rotating' | 'failed'
 
@@ -91,6 +93,8 @@ export interface RotationServiceDeps {
   hasPendingBoardInjection?: () => boolean
   /** 旧会话事件读取（缺省用 readSessionEvents）。 */
   getSessionEvents?: (sessionId: string) => Promise<SessionEventLike[]>
+  /** 换代后给新会话预置 dsh-trace-inspect 工具审计（缺省 = 不做；插件缺失时返回 unavailable）。 */
+  setToolAudit?: (sessionId: string, enabled: boolean) => Promise<ToolAuditResult>
   emit?: (event: string, payload: Record<string, unknown>) => void
   logger?: RotationLogger
   now?: () => number
@@ -318,11 +322,21 @@ export function createRotationService(deps: RotationServiceDeps) {
     if (agent === undefined || typeof agent.inject !== 'function') {
       throw new RotationError('rotation_failed', 'new commander session has no live agent to inject the handoff brief')
     }
+    // 工具审计（dsh-trace-inspect）必须在首轮 turn/start 之前预置；插件缺失时静默跳过。
+    await applyToolAuditDefault(
+      { setToolAudit: deps.setToolAudit, logger: deps.logger },
+      { sessionId: newSessionId, enabled: current.toolAudit },
+    )
     agent.inject(buildContextMessage(brief.text, {
       kind: 'commander-handoff',
       summary: `第 ${current.generation} 任交接简报（${brief.stats.chars} 字）`,
       generation: current.generation,
     }))
+    // 标题是展示层产物：简报落定后再命名；失败只记 warn，不阻断交接（不参与提交条件）。
+    await applyRotationTitleDefault(
+      { sessionController, logger: deps.logger },
+      { sessionId: newSessionId, generation: current.generation + 1, at: now(), timeoutMs: ROTATION_TIMEOUT_MS },
+    )
     return { sessionId: newSessionId, brief }
   }
 

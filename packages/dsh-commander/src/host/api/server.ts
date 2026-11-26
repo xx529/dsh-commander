@@ -396,7 +396,16 @@ export function createCommanderApi(deps: ApiDeps) {
         const raw = String(req.url ?? '')
         const index = raw.indexOf('?')
         const query = index >= 0 ? new URLSearchParams(raw.slice(index + 1)) : new URLSearchParams()
-        const result = await handleArchiveList(deps, query.get('limit') ?? undefined, query.get('cursor') ?? undefined)
+        const result = await handleArchiveList(
+          deps,
+          query.get('limit') ?? undefined,
+          query.get('cursor') ?? undefined,
+          query.get('q') ?? undefined,
+          query.get('status') ?? undefined,
+          query.get('workspaceId') ?? undefined,
+          query.get('from') ?? undefined,
+          query.get('to') ?? undefined,
+        )
         sendJson(res, result.status, result.body)
       } catch (error) {
         const apiError = toApiError(error)
@@ -414,7 +423,7 @@ export function createCommanderApi(deps: ApiDeps) {
         const result = action === 'archive' || action === 'restore'
           ? await handleTaskAction(deps, taskId, action)
           : action === 'accept'
-            ? await handleTaskAccept(deps, taskId)
+            ? await handleTaskAccept(deps, taskId, body)
             : action === 'cancel'
               ? await handleTaskCancel(deps, taskId)
               : await handleTaskContinue(deps, taskId, body)
@@ -480,6 +489,8 @@ export function createCommanderApi(deps: ApiDeps) {
 
   return {
     handler,
+    /** 只读整帧快照（工具写工作区摘要后广播用，与 HTTP `GET /commander/state` 同源）。 */
+    snapshot: () => snapshotOf(deps),
     dispose() {
       disposed = true
       idempotency.clear()
@@ -490,6 +501,8 @@ export function createCommanderApi(deps: ApiDeps) {
 
 export interface CommanderApi {
   handler: (req: HttpRequestLike, res: HttpResponseLike) => Promise<void>
+  /** 只读整帧快照（不推 SSE；调用方决定是否 broadcast）。 */
+  snapshot: () => Promise<import('./state.ts').CommanderSnapshot>
   dispose: () => void
   idempotency: ReturnType<typeof createIdempotencyCache>
 }

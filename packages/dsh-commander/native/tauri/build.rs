@@ -3,7 +3,7 @@ fn main() {
     // "Command set_mode not allowed by ACL"。
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
-            tauri_build::AppManifest::new().commands(&["set_mode", "open_session_window", "open_external", "quit"]),
+            tauri_build::AppManifest::new().commands(&["set_mode", "set_bubble", "set_quick_input", "set_ball_unread", "open_session_window", "open_external", "quit"]),
         ),
     )
     .expect("tauri-build failed");

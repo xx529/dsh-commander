@@ -90,12 +90,12 @@ test('dispatch: another task with a pending card returns pending_dispatch_exists
   const host = await setup()
   seed(host.stores, { id: 'task_a', status: 'draft' })
   seed(host.stores, { id: 'task_b', status: 'draft' })
-  const first = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_a', requestId: 'req_card_a' }, host.exec)) as { status: string }
+  const first = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_a', requestId: 'req_card_a', prompt: '首派原文' }, host.exec)) as { status: string }
   assert.equal(first.status, 'needs_confirmation')
   const other = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_b', requestId: 'req_card_b' }, host.exec)) as { status: string; code: string }
   assert.equal(other.status, 'rejected')
   assert.equal(other.code, 'pending_dispatch_exists')
-  const retry = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_a', requestId: 'req_card_a2' }, host.exec)) as { status: string }
+  const retry = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_a', requestId: 'req_card_a2', prompt: '首派原文' }, host.exec)) as { status: string }
   assert.equal(retry.status, 'needs_confirmation')
 })
 
@@ -128,7 +128,7 @@ test('confirmed dispatch clears the card and pumps the next ready task only', as
   await host.webServer.invoke('POST', '/commander/tasks/task_done_a/accept', {})
   assert.equal(host.texts().length, 1)
   // 首轮生成确认卡：有未决卡时不 pump（避免顶掉单确认卡）。
-  const first = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_next_b', requestId: 'req_pump_b' }, host.exec)) as { status: string; decisionId: string; recommendation: unknown }
+  const first = (await host.specOf('commander_task_dispatch').execute({ taskId: 'task_next_b', requestId: 'req_pump_b', prompt: '首派原文' }, host.exec)) as { status: string; decisionId: string; recommendation: unknown }
   assert.equal(first.status, 'needs_confirmation')
   assert.equal(host.texts().length, 1)
   // 确认派发成功（卡被消费）后 pump 下一条 C。

@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { TaskRecord } from '../../src/host/schema.ts'
 import {
-  dependenciesMet, dependencyMet, dependentsOf, isReady, readyDependentsOf, unnotifiedReadyTasks, validateDependsOn, waitingFor,
+  dependenciesMet, dependencyMet, dependentsOf, hasPendingDependents, isReady, readyDependentsOf, unnotifiedReadyTasks, validateDependsOn, waitingFor,
 } from '../../src/host/tasks/dependencies.ts'
 
 function task(id: string, overrides: Partial<TaskRecord> = {}): TaskRecord {
@@ -90,4 +90,19 @@ test('validateDependsOn enforces max/self/duplicate/missing/terminal/cycle', () 
   // ≤5 合法
   const many = ['a', 'b', 'c', 'd', 'e'].map((id) => task(id))
   assert.equal(validateDependsOn('x', ['a', 'b', 'c', 'd', 'e'], byId(many), many).ok, true)
+})
+
+test('hasPendingDependents: any unfinished dependent counts; done/cancelled/archived do not', () => {
+  const base = task('a', { status: 'review' })
+  const draft = task('b', { status: 'draft', dependsOn: ['a'] })
+  const running = task('c', { status: 'running', dependsOn: ['a'] })
+  const done = task('d', { status: 'done', dependsOn: ['a'] })
+  const cancelled = task('e', { status: 'cancelled', dependsOn: ['a'] })
+  const archived = task('f', { status: 'archived', archivedFrom: 'done', dependsOn: ['a'] })
+  assert.equal(hasPendingDependents([base, draft], 'a'), true)
+  assert.equal(hasPendingDependents([base, running], 'a'), true)
+  assert.equal(hasPendingDependents([base, done], 'a'), false)
+  assert.equal(hasPendingDependents([base, cancelled], 'a'), false)
+  assert.equal(hasPendingDependents([base, archived], 'a'), false)
+  assert.equal(hasPendingDependents([base], 'a'), false)
 })

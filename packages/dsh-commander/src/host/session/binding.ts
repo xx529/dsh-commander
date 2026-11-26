@@ -2,7 +2,9 @@
 // 口径：implementation-plan §5.1–§5.4 + m0-contract-patch §2.4。
 import { createId } from '../store/base.ts'
 import { defaultConfigRecord, type ConfigRecord, type ModelRef, type SessionLinkRecord } from '../schema.ts'
-import { clampPeriodDays } from '../rotation/config.ts'
+import { clampPeriodDays, resolveRotation } from '../rotation/config.ts'
+import { applyRotationTitleDefault, applyToolAuditDefault, type GenerationDefaultsLogger } from '../rotation/generation-defaults.ts'
+import type { ToolAuditResult } from '../rotation/tool-audit.ts'
 import type { CordisContext, SessionControllerService, SessionsQueryService, WorkspaceRegistryService } from '../dsh-types.ts'
 import { cwdBelongsToWorkspace, listNormalizedSessions, matchSessionWorkspaces, normalizeSessionRecord } from './session-records.ts'
 import type { ConfigStore } from '../store/config.ts'
@@ -10,6 +12,9 @@ import type { SessionStore } from '../store/sessions.ts'
 import type { WorkspaceStore } from '../store/workspaces.ts'
 
 const asPromise = async (value: unknown): Promise<unknown> => (value instanceof Promise ? await value : value)
+
+/** 手动「绑定到新会话」时标题 rename 的超时；比换任的 10s 短，避免设置页长时间等待。 */
+const MANUAL_BIND_TITLE_TIMEOUT_MS = 3_000
 
 export type CommanderStatus = 'unbound' | 'bound' | 'broken'
 
@@ -75,6 +80,9 @@ export interface BindingServiceDeps {
   now?: () => number
   /** 绑定写入完成后触发（M1：用于给指挥官 agent 安装模型工具；此时 config.commander.sessionId 已可见）。 */
   onBound?: (binding: CommanderBinding, mode: 'new' | 'attach') => void
+  /** 新会话预置 dsh-trace-inspect 工具审计（与 rotation 共用同一个本机路由闭包）。 */
+  setToolAudit?: (sessionId: string, enabled: boolean) => Promise<ToolAuditResult>
+  logger?: GenerationDefaultsLogger
 }
 
 export function createBindingService(deps: BindingServiceDeps) {
@@ -154,6 +162,7 @@ export function createBindingService(deps: BindingServiceDeps) {
     enabled: current.commander.rotation?.enabled === true,
     periodDays: clampPeriodDays(current.commander.rotation?.periodDays),
     includeUserTail: current.commander.rotation?.includeUserTail !== false,
+    toolAudit: current.commander.rotation?.toolAudit !== false,
     generation,
     generationStartedAt: at,
   })
@@ -242,7 +251,25 @@ export function createBindingService(deps: BindingServiceDeps) {
           // 反查失败不阻塞绑定（workspaceId 空串合法：绑定存在但工作区未登记）
         }
       }
-      const binding = await writeBinding({ workspaceId, workspacePath, sessionId, model }, 'new', now(), nextGeneration(deps.config.get()))
+      const current = deps.config.get()
+      const generation = nextGeneration(current)
+      const rotation = resolveRotation(current)
+      const timestamp = now()
+      // B2：轮换开启时，「绑定到新会话」与「立即换任」共用同一套新一任默认副作用。
+      // 先应用默认副作用再 writeBinding，避免绑定切换后并发消息抢在审计前触发首轮 turn/start。
+      if (rotation.enabled) {
+        await Promise.allSettled([
+          applyToolAuditDefault(
+            { setToolAudit: deps.setToolAudit, logger: deps.logger },
+            { sessionId, enabled: rotation.toolAudit },
+          ),
+          applyRotationTitleDefault(
+            { sessionController: controller, logger: deps.logger },
+            { sessionId, generation, at: timestamp, timeoutMs: MANUAL_BIND_TITLE_TIMEOUT_MS },
+          ),
+        ])
+      }
+      const binding = await writeBinding({ workspaceId, workspacePath, sessionId, model }, 'new', timestamp, generation)
       return { status: 'bound', binding }
     },
     /** 绑定到已有会话：只读校验（软依赖），不 create、不 selectModel、不删旧会话。 */

@@ -37,8 +37,8 @@ export interface PendingDecision {
   kind: 'initial' | 'continue'
   /** 本轮确认成功后的任务轮次。 */
   round: number
-  /** 指挥官传的本轮要求（写进 brief）。 */
-  instruction?: string
+  /** 本轮确认成功后要原样投递给工作会话的消息全文（指挥官自写；确认调用可省略以复用）。 */
+  prompt?: string
   /** 指挥官传的用户原话（仅展示/审计）。 */
   userRequest?: string
 }

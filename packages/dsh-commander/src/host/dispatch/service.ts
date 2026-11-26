@@ -33,9 +33,9 @@ export interface DispatchTaskArgs {
   confirmTarget?: unknown
   capabilityNeeds?: unknown
   requestId?: unknown
-  /** 指挥官传的本轮要求（续派时写进 brief）。 */
-  instruction?: unknown
-  /** 指挥官传的用户原话（只用于展示/审计，不写进 brief）。 */
+  /** 工作会话首条消息全文（指挥官自写；Host 原样投递，不拼模板、不截断）。 */
+  prompt?: unknown
+  /** 指挥官传的用户原话（只用于展示/审计，不写进 prompt）。 */
   userRequest?: unknown
 }
 
@@ -123,11 +123,9 @@ function hasPriorRound(task: Pick<TaskRecord, 'status' | 'round'>): boolean {
   return task.status === 'review' || (task.round ?? 1) > 1
 }
 
-function mergeInstruction(task: TaskRecord, decisionInstruction: string | undefined, argInstruction: string | undefined): string {
-  const parts = [task.pendingInstruction?.text, decisionInstruction, argInstruction]
-    .map(value => (value ?? '').trim())
-    .filter((value, index, all) => value !== '' && all.indexOf(value) === index)
-  return parts.join('\n').slice(0, 2000)
+/** prompt 只校验「非空字符串」，不做 trim/clip：文本原样交给工作会话（2026-11-26 口径）。 */
+function promptOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
 function pickUserRequest(
@@ -252,14 +250,14 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
     requestId: string
     capabilityNeeds?: string[]
     auto?: boolean
-    instruction?: string
+    /** 要原样投递给工作会话的消息全文。 */
+    prompt: string
     userRequest?: DispatchRecord['userRequest']
   }): Promise<DispatchTaskResult> => {
     // decision 是这一轮的事实来源：review 续派期间人工改状态也不改变「第 N+1 轮」的语义。
     const prior = input.decision.kind === 'continue'
     const nextRound = input.decision.round
     const previousRound = Math.max(1, nextRound - 1)
-    const instruction = (input.instruction ?? '').trim()
     const userRequest = input.userRequest ?? pickUserRequest(input.task, input.decision.userRequest, undefined, input.decision.createdAt)
     const spawn = await spawnDispatch({
       ctx: deps.ctx,
@@ -268,11 +266,8 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
       decisionId: input.decision.decisionId,
       target: input.target,
       requestId: input.requestId,
+      prompt: input.prompt,
       ...(input.capabilityNeeds !== undefined ? { capabilityNeeds: input.capabilityNeeds } : {}),
-      round: nextRound,
-      ...(instruction !== '' ? { instruction } : {}),
-      ...(input.task.reportSummary?.text !== undefined ? { previousSummary: input.task.reportSummary.text } : {}),
-      ...(input.task.acceptance.length > 0 ? { previousAcceptance: input.task.acceptance } : {}),
       now,
       ...(deps.controllerOverride !== undefined ? { controllerOverride: deps.controllerOverride as never } : {}),
       ...(deps.panelOverride !== undefined ? { panelOverride: deps.panelOverride } : {}),
@@ -331,8 +326,7 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
       confirmedBy: 'user',
       round: nextRound,
       kind: prior ? 'continue' : 'initial',
-      ...(instruction !== '' ? { instruction } : {}),
-      brief: spawn.brief,
+      brief: spawn.prompt,
       ...(userRequest !== undefined ? { userRequest } : {}),
     }
     await deps.stores.dispatches.put(dispatchRecord)
@@ -574,6 +568,11 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
     if (existingPending !== undefined && !existingPending.used && existingPending.taskId !== task.id) {
       return rejected('pending_dispatch_exists', `task '${existingPending.taskId}' already has a pending dispatch confirmation; resolve it before dispatching another task`)
     }
+    // 工作会话的消息全文只能由指挥官给：Host 不生成任何内容（2026-11-26 口径）。
+    const prompt = promptOf(args.prompt)
+    if (prompt === undefined) {
+      return rejected('invalid_prompt', 'prompt is required: compose the working session message yourself (Host sends it verbatim, no template and no clipping)')
+    }
     const prior = hasPriorRound(task)
     const targetRound = prior ? (task.round ?? 1) + 1 : (task.round ?? 1)
     decisions.prune()
@@ -632,7 +631,7 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
             createdAtRequestId: requestId as string,
             kind: prior ? 'continue' : 'initial',
             round: targetRound,
-            ...(stringOrUndefined(args.instruction) !== undefined ? { instruction: stringOrUndefined(args.instruction) as string } : {}),
+            prompt,
             ...(stringOrUndefined(args.userRequest) !== undefined ? { userRequest: stringOrUndefined(args.userRequest) as string } : {}),
           })
           if (prior) {
@@ -742,18 +741,17 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
           createdAtRequestId: requestId,
           kind: prior ? 'continue' : 'initial',
           round: targetRound,
-          ...(stringOrUndefined(args.instruction) !== undefined ? { instruction: stringOrUndefined(args.instruction) as string } : {}),
+          prompt,
           ...(stringOrUndefined(args.userRequest) !== undefined ? { userRequest: stringOrUndefined(args.userRequest) as string } : {}),
         }
         const autoUserRequest = pickUserRequest(task, undefined, stringOrUndefined(args.userRequest), timestamp)
-        const autoInstruction = mergeInstruction(task, undefined, stringOrUndefined(args.instruction))
         return finishDispatch({
           task,
           decision: autoDecision,
           target: computed.recommendation,
           requestId,
           auto: true,
-          ...(autoInstruction !== '' ? { instruction: autoInstruction } : {}),
+          prompt,
           ...(autoUserRequest !== undefined ? { userRequest: autoUserRequest } : {}),
         })
       }
@@ -788,7 +786,7 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
       createdAtRequestId: requestId,
       kind: prior ? 'continue' : 'initial',
       round: targetRound,
-      ...(stringOrUndefined(args.instruction) !== undefined ? { instruction: stringOrUndefined(args.instruction) as string } : {}),
+      prompt,
       ...(stringOrUndefined(args.userRequest) !== undefined ? { userRequest: stringOrUndefined(args.userRequest) as string } : {}),
     })
     const timestamp = now()
@@ -912,7 +910,11 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
           if (conflict !== null) return rejected('invalid_target', conflict.message)
         }
         const capabilityNeeds = Array.isArray(args.capabilityNeeds) ? args.capabilityNeeds.filter((item): item is string => typeof item === 'string').slice(0, 10) : undefined
-        const instruction = mergeInstruction(task, decision.instruction, stringOrUndefined(args.instruction))
+        // 确认调用可省略 prompt：复用确认卡里那一份（避免模型重抄长文本、也避免两轮文本漂移）。
+        const prompt = promptOf(args.prompt) ?? decision.prompt
+        if (prompt === undefined) {
+          return rejected('invalid_prompt', 'prompt is required: compose the working session message yourself (Host sends it verbatim, no template and no clipping)')
+        }
         const userRequest = pickUserRequest(task, decision.userRequest, stringOrUndefined(args.userRequest), decision.createdAt)
         const result = await finishDispatch({
           task,
@@ -920,7 +922,7 @@ export function createDispatchService(deps: DispatchServiceDeps): DispatchServic
           target,
           requestId: requestId ?? `confirm_${decisionId}`,
           ...(capabilityNeeds !== undefined ? { capabilityNeeds } : {}),
-          ...(instruction !== '' ? { instruction } : {}),
+          prompt,
           ...(userRequest !== undefined ? { userRequest } : {}),
         })
         if (requestId !== undefined) cache.set(requestId, result)
