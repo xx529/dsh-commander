@@ -14,7 +14,7 @@
 | # | 主题 | 唯一口径 |
 |---|---|---|
 | 1 | M1 余项（自定义 attach） | 新增只读 `GET /commander/sessions?workspaceId=…`；`confirmTarget{mode:'attach',sessionId}` 校验"会话存在 + cwd 属于该工作区 + 非归档/非子代理"；**同工作区多任务可 attach（记录 assignment，不锁、不做并发控制，排队交给 prompt queue）**；attach **不调用能力面板**。 |
-| 2 | M2 看板 | Client 在 `main` keyed 注册 **`commander-board`** 整页；六列映射见 §2.2（**无状态拖拽**）；`PATCH /commander/board/tasks/:id` **只改 priority/title** + `board_edits` → **30s 合并 + 幂等 `[board-edit]` 注入指挥官**；`/accept|archive|restore|cancel` 为人专用路由；`stale`（>20min 只读）；`GET /commander/tasks/:id` 补 boardEdits/依赖派生字段。 |
+| 2 | M2 看板 | Client 在 `main` keyed 注册 **`commander-board`** 整页；六列映射见 §2.2（**无状态拖拽**）；`PATCH /commander/board/tasks/:id` **只改 priority/title** + `board_edits` → **30s 合并 + 幂等 `[board-edit]` 注入指挥官**；`/accept|archive|restore|cancel` 为人专用路由；`GET /commander/tasks/:id` 补 boardEdits/依赖派生字段。（`stale` 停滞徽标已于 2026-11-24 移除，见 §2.3。） |
 | 3 | M3 闭环 | `turn/end` 最后回复注入（触发/去重/截断/pending/合并/补一次，详见 §3.1）；`commander_task_report` 工具（整理不评估）；**审批悬浮卡只在 Client**（同一 `PendingApproval`，`answerable` 守卫，Host 不碰）；人专用 `accept/archive/restore/cancel/continue`；播报由状态派生（无 `brief_user`、无 Host 调度）。 |
 | 4 | 边界 | 不改任务记录 schema（只加展示派生字段）；不新增事件类型/表；不做原生壳/系统悬浮/scheduler/投影；`done` 仅 accept 路由；审批不进上下文/看板。 |
 
@@ -90,14 +90,14 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 | 列 | 任务状态 | 排序 |
 |---|---|---|
 | 待派发 | `draft`、`proposed` | `updatedAt` 倒序；有待确认卡（`pendingDispatch`）置顶并高亮；waitingFor 显示「等待 A 验收」 |
-| 待运行 | `queued` | `lastActivityAt` 倒序；stale 徽标 |
-| 运行中 | `running` | `lastActivityAt` 倒序；stale 徽标 |
+| 待运行 | `queued` | `lastActivityAt` 倒序 |
+| 运行中 | `running` | `lastActivityAt` 倒序 |
 | 受阻 | `blocked` | `block.since` 倒序；卡片显示 code/reason |
 | 待验收 | `review` | `updatedAt` 倒序；卡片显示 acceptance 条数/证据不足数/继续派发 badge |
 | 已验收 | `done` | `updatedAt` 倒序 |
 | 回收站（页签/抽屉内） | `archived`、`cancelled` | 独立「回收站」页签（不是列）；archived 可恢复 |
 
-- 卡片字段（最小）：`title`、`workspaceName`、`status`、`priority`、`capability` 摘要、`stale` 徽标、`blocked` code/reason、`dependsOn/waitingFor/ready`、`pendingDispatch`、`pendingContinue`、`sessionCount`、`updatedAt`；操作只保留「打开会话/取消/归档」（review 另有验收/继续派发）。
+- 卡片字段（最小）：`title`、`workspaceName`、`status`、`priority`、`capability` 摘要、`blocked` code/reason、`dependsOn/waitingFor/ready`、`pendingDispatch`、`pendingContinue`、`sessionCount`、`updatedAt`；操作只保留「打开会话/取消/归档」（review 另有验收/继续派发）。
 - **不做状态拖拽**；状态推进通过 commander 工具或人专用按钮。
 - 看板不放审批/提问（冻结决策：审批不进看板）。
 
@@ -105,12 +105,12 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 
 `GET /commander/state` 的 `tasks[]` 每项追加（只读派生，不写盘）：
 ```json
-{ "stale": true, "sessionCount": 2, "acceptanceCount": 3, "evidenceInsufficientCount": 1,
+{ "sessionCount": 2, "acceptanceCount": 3, "evidenceInsufficientCount": 1,
   "version": 12, "dependsOn": ["task_a"], "waitingFor": ["task_a"], "ready": false,
   "pendingDispatch": false, "pendingContinue": false,
   "archiveSummary": { "archivedCount": 2, "cancelledCount": 1 } }
 ```
-- `stale`：`status ∈ {queued,running}` 且 `now - lastActivityAt > 20min` → true（**只读**；不改状态、不轮询、不注入）。
+- **`stale` 已移除（2026-11-24）**：不再有 `STALE_AFTER_MS`、`taskIsStale` 与 `stale` 派生字段；快照/详情/SSE/工具行均不下发该字段。长静默任务不再显示任何标记，也不触发任何自动动作。
 - `archiveSummary` 仅快照顶层给全局计数；成本低（域内已加载）。
 - `tasks` 默认只含非 `archived`（≤200，`updatedAt` 倒序）；回收站数据由 `GET /commander/archive` 拉取（§2.5）。
 - `counts` 增加 `cancelled`、`archived`（现有 counts 已含则不变）。
@@ -142,6 +142,33 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 - `POST /commander/tasks/:id/restore`：仅 `archived` → **`draft`**（唯一口径；保留原 acceptance/timeline 摘要/assignments；`archivedAt` 保留历史不删，timeline 追加 `{type:'status', text:'从回收站恢复为 draft'}`）；返回摘要；`cancelled` 不可直接 restore（用户需先改为 draft 需显式 PATCH，`conflict`）。
 - 归档不进自动清理（不建 scheduler）；`archiveAfterDays` 配置 M3 之后再说（当前 board.archiveAfterDays=30 仅展示）。
 
+#### 2.5.1 回收站查询扩展（2026-11-24，加法改动）
+
+原 `GET /commander/archive?limit=&cursor=` 扩展为：
+
+```http
+GET /commander/archive?limit=60&cursor=<updatedAt>
+    &q=<关键词>&status=archived|cancelled&workspaceId=<id>&from=<ms>&to=<ms>
+```
+
+- `limit` 1..100（默认 50）；`cursor` 仍是上一页最后一条的 `updatedAt`，按 `updatedAt` 倒序。
+- `q`：标题或任务 id 的大小写不敏感子串，去空格后 ≤100 字符；空串等价不传。
+- `status`：`archived` / `cancelled`；`workspaceId`：精确匹配；`from`/`to`：`updatedAt` 毫秒，`from` 含、`to` 不含。
+- 响应（加法字段，旧 Client 忽略即可）：
+
+```json
+{ "ok": true, "tasks": [], "nextCursor": 1732490000000,
+  "total": 1284,
+  "summary": { "archivedCount": 1031, "cancelledCount": 253, "last30dCount": 190 },
+  "months": [{ "key": "2026-11", "count": 131 }, { "key": "2026-10", "count": 236 }],
+  "rev": 61 }
+```
+
+- `total`/`summary` 基于**全部**过滤条件（含 `from`/`to`）；`last30dCount` 指 `updatedAt >= now-30d`。
+- `months` 用于月份导航：基于 `q`/`status`/`workspaceId`、**忽略 `from`/`to`**，key 为 Host 本地时区的 `YYYY-MM`，按 key 倒序；这样选完一个月，导航里仍然列着所有月份。
+- `tasks[]` 行在原有 `{id,title,status,workspaceId,priority,updatedAt,lastActivityAt,archivedAt?}` 上补 `round`、`sessionCount`（`assignments.length`）。
+- 非法参数 → `400 invalid_request`；只读，不写盘。
+
 ### 2.6 人工改动注入（30s 合并 + 幂等）
 
 - 触发：仅 PATCH 成功写 `board_edits` 后；**一次性 `setTimeout(30s)` 合并窗口**（不是 scheduler/轮询；无编辑则无定时器）。
@@ -163,8 +190,7 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 现有 M1 响应追加：
 ```json
 "boardEdits": [ { "editId":"edit_…", "field":"status", "before":"review", "after":"blocked", "at":0, "injectedAt":0 } ],   // 最近 20 条
-"archivedAt": 0,
-"stale": false
+"archivedAt": 0
 ```
 - UI 抽屉分区：概览（title/goal/workspace/status/priority/时间/block）、决策记录（dispatch 详情）、验收内容（acceptance + evidence 状态，人可看不可改）、关联会话（sessions/assignments + 打开会话按钮）、时间线（≤100）、交付物（M3 起，本 M2 为空）、人工改动（boardEdits 摘要）。
 - 只读；不返回 Jev Key/会话正文/审批内容。
@@ -242,8 +268,8 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 | 阶段 | backend（Host） | frontend（Client） | tester |
 |---|---|---|---|
 | **W1 M1 余项**（0.5d） | `GET /commander/sessions` 只读路由 + 快照无关；放宽 `findTargetConflict` 为 §1.2 校验；attach assignment 去重 | 确认卡「自定义选择」展开：工作区下拉 + 会话列表（新路由）+ 发送 `[dispatch-confirm] 自定义` 消息 | 并入 m1-accept 追加：sessions 路由/自定义 attach/无面板调用 |
-| **W2 M2 后端**（1d） | `board_edits` 仓储补 `listByTask`/`injectionKey` 查询；`PATCH board`（校验/状态机/写 task+edit/幂等）；`/archive`、`/restore`、`GET /archive`；快照 `stale/sessionCount/acceptanceCount/archiveSummary`；`GET tasks/:id` 补 boardEdits；30s 合并注入器（一次性 timer） | — | 单测/集成：状态机、幂等、合并、失败补注入 |
-| **W3 M2 前端**（1.5d） | — | `main` keyed `commander-board` 整页 + `selectPanel` 导航；六列/卡片/回收站/详情抽屉；无状态拖拽，取消/验收/归档按钮 → 人专用路由；stale 徽标；空态/加载/错误 | e2e：状态迁移、重启不变、30s 注入一次不重复 |
+| **W2 M2 后端**（1d） | `board_edits` 仓储补 `listByTask`/`injectionKey` 查询；`PATCH board`（校验/状态机/写 task+edit/幂等）；`/archive`、`/restore`、`GET /archive`；快照 `sessionCount/acceptanceCount/archiveSummary`；`GET tasks/:id` 补 boardEdits；30s 合并注入器（一次性 timer） | — | 单测/集成：状态机、幂等、合并、失败补注入 |
+| **W3 M2 前端**（1.5d） | — | `main` keyed `commander-board` 整页 + `selectPanel` 导航；六列/卡片/回收站/详情抽屉；无状态拖拽，取消/验收/归档按钮 → 人专用路由；空态/加载/错误 | e2e：状态迁移、重启不变、30s 注入一次不重复 |
 | **W4 M3 后端**（1d） | turn/end trigger（§3.1 全口径）+ `lastInjected`；`commander_task_report` 工具 + seq 校验；`accept/continue` 路由；快照 `workSessions`/metrics | — | e2e：注入去重/pending 过滤/8KB/合并；accept/continue/live |
 | **W5 M3 前端**（1d） | — | 审批悬浮卡（`pendingInteraction`/answerable/answer/打开会话）；播报徽标；详情「交付物/验收」展示 | live 走查：审批双处同实例、先答生效、注入后看板更新 |
 | **W6 收尾**（0.5d） | 回归全部测试、更新契约文档、live 安装/迁移说明 | 同 | `docs/validation/m2-accept.md`、`m3-accept.md` + 审计 |
@@ -253,7 +279,7 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 ### 4.2 验收证据清单（`docs/validation/{m2,m3}-accept.md` 字段）
 
 沿用 M0/M1 accept 格式，每项必须有：项目 ID（M2-x/M3-x）、结论（PASS/FAIL/UNVERIFIED）、操作者/时间、环境（origin、DSH 版本、插件版本/构建 sha）、步骤（可重放命令/点击序列）、原始证据路径（截图/JSON/SSE 日志）、限制。
-- M2 必测：六列投影与计数；一条命令 `proposed→queued→running`；重启后看板不变；`PATCH priority/title` 后 30s 内指挥官收到 `[board-edit]` 一次且不重复（`injectionKey`/`injectedAt` 证据）；`PATCH status` 拒绝；archive/restore/cancel；stale 徽标（伪造 `lastActivityAt` 单测即可）；详情抽屉各分区与五段进度。
+- M2 必测：六列投影与计数；一条命令 `proposed→queued→running`；重启后看板不变；`PATCH priority/title` 后 30s 内指挥官收到 `[board-edit]` 一次且不重复（`injectionKey`/`injectedAt` 证据）；`PATCH status` 拒绝；archive/restore/cancel；看板/详情/工具行**不含** `stale` 字段（长静默任务不显示标记）；详情抽屉各分区与五段进度。
 - M3 必测：turn/end 注入只发最后回复、pending 不注入、去重、8KB 截断、指挥官忙合并；`commander_task_report` 写 acceptance/status=review、seq 越界拒绝；accept `review→done` 仅人；rework 投递 brief 且 `review→running`；审批双处渲染同请求、先答生效、后答 `already settled` 被吞、审批不进 state/tasks；播报角标派生与节流。
 - 复跑命令：`pnpm --filter dsh-commander test`（≥142 + 新增）、`node packages/dsh-commander/tests/e2e/m2-e2e.mjs`、`m3-e2e.mjs`（新增）、`node tools/dev/client-repro.sh`（client UI）、`node tools/dev/verify-live-m0.mjs`（live，注意其 inject 断言待更新）。
 - live 走查属用户/Lead（安装/重启用 §m0-live-install 规则；改 Host/新增文件必须重装+重启）。
@@ -269,7 +295,7 @@ target=workspaceId:<ws>;mode:attach;sessionId:<sid>
 | 位置 | 现状 | 本补丁 |
 |---|---|---|
 | `implementation-plan §8.2` 路由 | M1 无 sessions/board/archive/accept | 新增 `GET /commander/sessions`、`PATCH /commander/board/tasks/:id`（priority/title）、`POST /commander/tasks/:id/archive|restore|accept|cancel|continue`、`GET /commander/archive` |
-| `§8.3` 快照 | 无 stale/workSessions/archiveSummary | 增补派生字段（不改记录 schema） |
+| `§8.3` 快照 | 无 workSessions/archiveSummary | 增补派生字段（不改记录 schema） |
 | `§8.5` 错误码 | 无 delivery_failed 等 | M2/M3 使用 `conflict`；M3 增 `delivery_failed` |
 | `§9`/`§10` 工具 | M1 四工具 | M3 增 `commander_task_report`；状态机 v1.0 增 `commander_task_get` 并收窄 `commander_task_update` |
 | `§11` 验收映射 | M1 表 | 增 M2/M3 行（按本 §4.2 口径） |

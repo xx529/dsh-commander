@@ -437,6 +437,9 @@ interface BoardEditRecord {
 | `commander_task_dispatch` | 全量候选 + 能力解析 + Jev + 门控 + 建会话；也用于确认/续派 | 是 |
 | `commander_task_report` | 把最后回复整理成验收与证据（进入 review 的唯一正常入口） | 是 |
 | `commander_task_list` | 查看看板（每行带 version/ready） | 否 |
+| `commander_workspace_list` | 看已启用工作区（派发目标，只读） | 否 |
+| `commander_session_list` | 看指定工作区的根会话（attach 目标，只读） | 否 |
+| `commander_workspace_update` | 维护工作区摘要（与设置页同一字段；不动白名单/策略） | 是 |
 
 **已删除 `brief_user`**：指挥官的普通回复就是播报；界面根据任务状态与新消息决定是否提醒，不需要一个单独的"播报工具"。
 
@@ -588,7 +591,7 @@ interface BoardEditRecord {
 1. sessionController.create({ workspaceId, agentPreset })  → sessionId
 2. capabilityPanel.jev.rank({ sessionId, draft, cwd })      → plan
 3. capabilityPanel.jev.apply({ sessionId, plan, cwd })      → { enabled, disabled, elapsedMs }
-4. sessionController.prompt({ sessionId, mode:'queue', content: brief })
+4. sessionController.prompt({ sessionId, mode:'queue', content: prompt })   // prompt = commander_task_dispatch.prompt 原文，Host 零拼接零截断（2026-11-26）
 ```
 
 - `draft` 里包含指挥官润色后的能力需求（例如「需要浏览器自动化、单测」）与任务目标。
@@ -825,7 +828,7 @@ stateDiagram-v2
 | 最后回复为空/只有工具调用 | 注入 `[session-reply] 无文本` 或跳过（配置） |
 | 注入重复 | `lastInjected` 去重（sessionId+turnId+seq） |
 | 注入时 commander 正忙 | 排队一条；合并同一 session 的连续停止 |
-| 会话非空闲且 `now-lastActivityAt > 20min` | 看板只显示“疑似停滞”徽标；不改状态、不轮询注入、不自动追问 |
+| 会话非空闲且长时间无活动 | **2026-11-24 移除「疑似停滞」徽标**：不改状态、不轮询注入、不自动追问，看板不对长静默任务做任何标记 |
 | 回复 >8KB | 头尾截断 + `truncated` |
 | Jev 超时 | 默认 `pause_and_ask` |
 | Jev 低置信 | `needs_confirmation` |

@@ -14,7 +14,7 @@
 - 测试：`pnpm --filter dsh-commander test` → **229/229 pass**（2026-11-18 11:3x 复跑，node v22.22.2；含本轮 i18n/绑定选择器/性能修复回归）。**2026-11-22 状态机 v1.0 实施后：373/373 pass**（新增 state-machine/dependencies/task-update/task-dependencies 测试；见 §11）。
 - 验收：`docs/validation/audit-m0.md` → **M0 整体 PASS（核心）**（M0-1 live 球/面板/点击 PASS；设置页四组/主题/console 为 UNVERIFIED 补验项）；`docs/validation/audit-m1.md` / `m1-accept.md` → **M1 PASS**（M1-1..4 live PASS，M1-5 豁免；确认卡「采用建议」物理点击 UNVERIFIED，以等效 `[dispatch-confirm]` 消息证据替代）。
 - **本轮 hotfix（用户 live 反馈 3 项，2026-11-18 11:3x）**：① 看板/抽屉/审批卡/系统消息 **i18n key 直出** → `locales` 补齐 **81 key** + 防回归测试，client 最终 sha `07d9af06a984e583…`（246,540B）；② 设置页「**选择已有会话**」从 M0 占位到完整实现（`GET /commander/sessions?workspaceId=…&limit=20`，返回 title/createdAt/lastActiveAt，冷会话 `bindSelect` 支持、错误码映射）——**用户 live 实机确认「绑定和切换可以了」= live UI PASS**；③ **会话列表性能回归** 41–64s → 0.18–1.2s（registry ids + 标题快照按 limit 分块并行；旧冷首调 52.9s → 0.23–0.33s）。
-- **R1 会话轮换（2026-11-19，已实现 + 自测）**：默认关闭；启用后按 **1–7 天**周期在指挥官 `turn/end`（投递前兜底）换任；新会话通过 `agent.inject()` 收到**确定性交接简报**（本周期任务 + 未完成 + 用户最近原话，≤4096 字），旧会话标 `retired` 保留、可绑回；手动「绑定到新会话」**不生成简报**（2026-11-20 hotfix：简报窗口改为「至少覆盖一个周期」，修掉首次换任空窗；页脚不再提示打开旧任会话；2026-11-24 hotfix：到期时间改为自然日本地 00:00 对齐）。契约 `docs/architecture/rotation-contract-patch.md`，证据 `docs/validation/rotation-implementation.md`（单测 407/407、harness 51/51+182/182、m23 e2e 25/25、r1 e2e 18/18）。**Host 改动 + 新增 `lib/host/rotation/*` → 必须重装 + 重启 DSH；client 改需硬刷新。**
+- **R1 会话轮换（2026-11-19，已实现 + 自测）**：默认关闭；启用后按 **1–7 天**周期在指挥官 `turn/end`（投递前兜底）换任；新会话通过 `agent.inject()` 收到**确定性交接简报**（本周期任务 + 未完成 + 用户最近原话，≤4096 字），旧会话标 `retired` 保留、可绑回；手动「绑定到新会话」**不生成简报**（2026-11-20 hotfix：简报窗口改为「至少覆盖一个周期」，修掉首次换任空窗；页脚不再提示打开旧任会话；2026-11-24 hotfix：到期时间改为自然日本地 00:00 对齐；2026-11-26：换任后新会话标题写 `第 N 任 · YYYY-MM-DD`（本地日期，`sessionController.rename` 钉住，失败只 warn 不阻断交接）；同日新增 `rotation.toolAudit`（默认开）：若装了 dsh-trace-inspect，换代给新会话预置其「工具审计」，经其本机路由 `POST /trace-inspect/api/tool-audit`，404/失败静默或 warn、不阻断换代；同日第二轮：`rotation.enabled=true` 时手动「绑定到新会话」与换代对齐标题/工具审计（含首任 `第 1 任`，仍不生成简报），并修复绑定写回丢失 `toolAudit` 的问题）。契约 `docs/architecture/rotation-contract-patch.md`，证据 `docs/validation/rotation-implementation.md`（首轮单测 407/407；2026-11-26 第二轮全量 471/471、rotation 集成 21/21、r1 e2e 18/18、typecheck/build PASS）。**Host 改动 + 新增 `lib/host/rotation/*` → 必须重装 + 重启 DSH；client 改需硬刷新。**
 - **侧栏入口（2026-11-19，用户要求）**：DSH 左侧栏新增「**任务看板**」行 → `sidebar.panellist` `id:'commander-board'`、`order:40`（插件 0 / 自动化任务 10 / 上下文洞察 20 / 能力面板 30 之后，「更多」之前）；图标为内联 SVG（零依赖），label 走新 key `board.nav`。实现 `src/client/board-nav.ts` + `BoardNavIcon.tsx`，回归 `tests/client/nav.test.ts` + harness `smoke.mjs`（49/49）。本次只重建已有文件；live 安装是 `link:`（`~/.dsh/profiles/desktop/node_modules/dsh-commander` 符号链接到仓库包），`lib/client.js` sha `95819e32c42a72f…`（349,125B）已即时可读 → **用户硬刷新即可，无需重装/重启**。
 - 新增：**M1R（自定义 attach）= PASS**（e2e 33/33、live 确认卡渲染 + attach 等效消息派发 PASS；物理点击 UNVERIFIED）；**M2（看板）= PASS**（e2e 25/25、devops 65 ASSERT、live Host 只读 PASS；live 看板 UI 点击/拖拽/回收站 UNVERIFIED）；**M3（闭环）= PASS**（e2e 25/25、单测 201/201、harness 43/43+92/92、live Host 只读 PASS；live 审批卡/accept-rework/角标 UI UNVERIFIED）；契约复核 `docs/architecture/m2m3-review.md` → **PASS，HIGH=0（HIGH-1 已修复）**；3 个 MEDIUM 按 Lead 裁决记为 known limitations（见 §5 第 11 条）。验收文档 sha 见 §5 第 12 条。
 - 门禁：V0 = **FAIL**（V5 v2 不达 85%/70%/95%/40%）；用户 2026-11-17 决策：**忽略 V5、降级全确认、继续 M0→M1**；`docs/validation/V0-GATE.md` 保留裁定与重开门条件。
@@ -207,7 +207,7 @@ DSH_WEB_URL=http://127.0.0.1:<PORT> DSH_WEB_TOKEN=… node tools/dev/verify-live
 | M3 | `POST /commander/tasks/:id/accept` | 唯一验收入口（review→done，仅人） |
 | M3 | `POST /commander/tasks/:id/rework` | 返工：先投递续做 brief，成功才 review→running；失败 502 不改状态 |
 
-SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.status`、`dispatch.updated`、`task.updated`、`tasks.changed`、`binding.updated`、`capability.applied`、`bye`（插件卸载）。快照：`binding/commanderStatus/commanderBusy/panel/counts/tasks/messages(≤200)/workspaces/pendingDispatch/metrics/rev`；M2 增 `tasks[].stale/sessionCount/acceptanceCount/evidenceInsufficientCount` + 顶层 `archiveSummary`；M3 增 `workSessions`（≤200，审批卡用）。
+SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.status`、`dispatch.updated`、`task.updated`、`tasks.changed`、`binding.updated`、`capability.applied`、`bye`（插件卸载）。快照：`binding/commanderStatus/commanderBusy/panel/counts/tasks/messages(≤200)/workspaces/pendingDispatch/metrics/rev`；M2 增 `tasks[].sessionCount/acceptanceCount/evidenceInsufficientCount` + 顶层 `archiveSummary`（`tasks[].stale` 已于 2026-11-24 移除，见 §12）；M3 增 `workSessions`（≤200，审批卡用）。
 错误码：`invalid_request/not_found/conflict/panel_unavailable/storage_error/internal/binding_required/binding_broken/prompt_failed/workspace_conflict/preset_unknown/create_failed/decision_expired/decision_required`。
 
 ### 4.4 面板消息唯一通道（禁止改回 client 直连）
@@ -218,7 +218,7 @@ SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.st
 
 ### 4.5 指挥官工具（M1，仅指挥官会话作用域）
 
-`commander_task_create` / `commander_task_get` / `commander_task_update` / `commander_task_dispatch` / `commander_task_list` / `commander_task_report`；`accept`/`archive`/`restore`/`cancel` 是**人专用 HTTP 路由**，不是模型工具。`commander_task_update` 只接受 action enum（edit/set_dependencies/block/cancel/recover）且必带 `expectedRevision`，不再接受裸 `status`。工具：
+`commander_task_create` / `commander_task_get` / `commander_task_update` / `commander_task_dispatch` / `commander_task_list` / `commander_task_report` / `commander_workspace_list` / `commander_workspace_update` / `commander_session_list`；`accept`/`archive`/`restore`/`cancel` 是**人专用 HTTP 路由**，不是模型工具。`commander_task_update` 只接受 action enum（edit/set_dependencies/block/cancel/recover）且必带 `expectedRevision`，不再接受裸 `status`；`commander_workspace_update` 只写工作区摘要（与设置页同一字段，`summarySource='model'`），不动白名单/策略。工具：
 - 插件 `apply` 里 `ctx.tools.register(definition, { when })` **全局注册一次**（归属=插件，工具面板才认；**不要**注册到 agent 作用域，见坑 18）；`when` 按 step 的 agent 会话 id 放行，只对当前指挥官可见/可调用（身份判定回退 `agent.id`/`session.id`，见坑 4）；
 - `commander_task_dispatch` 的 `output.schema` 必须用 `oneOf` 完整覆盖 `rejected/needs_confirmation/dispatched` 三 variant（DSH 运行时严格校验，见坑 3）；`output.render` 决定模型可见内容；
 - 模型可见性判据用「真实模型调用 + state.tasks」验证，**不要用 `tools.schemas()`**（不反映动态注册）。
@@ -228,7 +228,7 @@ SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.st
 
 - `DEFAULTS.autoDispatch=false`（运行期常量；**不改 `ConfigRecord` 冻结 schema**）；`ConfigRecord.jev.threshold/confidenceFloor` 只作提示/推荐，不用于放行。
 - 首次 `commander_task_dispatch` **恒** `needs_confirmation`：`decisionId`（确定性 `dec_`+sha256(taskId+'\0'+requestId) 前24hex）、`candidates≤8`、`recommendation`、`scores{pWorkspace,pSession,pMax=min,concentration=min}`、`reason ∈ {user_confirm_required,jev_unavailable,low_confidence,decision_required}`、`expiresAt=+30min`。
-- 二次 `commander_task_dispatch({taskId, decisionId, confirmTarget, requestId})`（或"唯一 pending 下原 candidate+requestId"）→ 校验未过期/未用/归属 → create/attach → prompt brief → `dispatched`、任务 `queued`；`turn/start` 后 `running`。
+- 二次 `commander_task_dispatch({taskId, decisionId, confirmTarget, requestId})`（或"唯一 pending 下原 candidate+requestId"）→ 校验未过期/未用/归属 → create/attach → `prompt(prompt 原文)` → `dispatched`、任务 `queued`；`turn/start` 后 `running`。工作会话消息全文由指挥官写（`prompt`），Host 零拼接、零截断（见 §13）。
 - 决策仅内存 TTL 30m（重启/过期 → `decision_expired`，要求指挥官重新派发）；同一 decision 只提交一次（重复调用幂等回放首次结果）；`requestId` 5min 幂等（工具层 LRU）。
 - 确认卡 UI 三动作（采用/自定义/取消）只发**普通用户消息**（`[dispatch-confirm] … decisionId/taskId/target`）到指挥官会话，**不新增确认路由**（详见 `m1-contract-patch.md` §2）。
 
@@ -263,7 +263,7 @@ SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.st
     - **rework prompt 成功但版本冲突返回 conflict（brief 已发）**：**M5 已修**——续派不再直接 prompt 工作会话；`finishDispatch` 对 `turn/start` 顶掉 task.version 的竞态按最新 version 重试（≤3 次），避免第一次失败、brief 已发、重试又发一遍。
     LOW（不阻塞）：`dispatch/service.ts:615` 注释与实现不符、board-edit 投递成功但标记前崩溃可能重复一次、注入去重比较用 `>=`（更严）。
 12. **M1R/M2/M3 最终验收状态（2026-11-18 tester 定稿）**：**M1R PASS / M2 PASS / M3 PASS**。live Host 只读均 PASS（health/state/archive/sessions 新字段、metrics 含 `projectionUnavailable`、pending=null）；**live UI 物理交互为环境性 UNVERIFIED**（agent-desktop AXPress 对 web 内容无效果、System Events 坐标点击不触发、DevTools DOM 点击被外部 JS 干扰），替代取证为隔离 harness（43/43+92/92）+ e2e + 单测/集成。
-    - **UNVERIFIED 清单（均已有单测/集成覆盖与复跑命令）**：live UI 物理点击（确认卡采用/自定义/取消、看板点击/拖拽/回收站、设置页四组/主题/发送按钮/console 截图、审批卡/accept-rework/角标）；stale 20min（e2e 无法推进时钟）；生产 30s 合并窗口（e2e 用加速窗口）；pending 跳过注入 e2e（隔离难造 PendingApproval，集成覆盖）；archived attach fixture（单测覆盖）。
+    - **UNVERIFIED 清单（均已有单测/集成覆盖与复跑命令）**：live UI 物理点击（确认卡采用/自定义/取消、看板点击/拖拽/回收站、设置页四组/主题/发送按钮/console 截图、审批卡/accept-rework/角标）；生产 30s 合并窗口（e2e 用加速窗口）；pending 跳过注入 e2e（隔离难造 PendingApproval，集成覆盖）；archived attach fixture（单测覆盖）。
     - **复跑命令**：`node packages/dsh-commander/tests/e2e/m1r-e2e.mjs`、`node packages/dsh-commander/tests/e2e/m23-e2e.mjs`（均已核对存在）、`DSH_COMMANDER_HARNESS_MODULES=/tmp/dshc-harness-modules/node_modules node packages/dsh-commander/tests/client/harness/run-harness.mjs`、`pnpm --filter dsh-commander test`（232/232）。
     - **关键文档 sha256（前 16）**：`m1r-accept.md a739cd9fddb25a76`、`m2-accept.md 168fcc777686b7bc`、`m3-accept.md 0d39c0012e7884a5`、`audit-m2.md 3b6fd4e125c69742`、`audit-m3.md d1527e39db426aab`、`m2m3-review.md fc90997d5807dc5b`、`m2-m3-build.md b6128653e94716c9`（§12.3 已含 Lead 决策）。
 13. **本轮 hotfix 记录（2026-11-18 11:3x，用户 live 反馈）**：① **i18n key 直出**：看板/抽屉/审批卡/系统消息缺 key → `locales` 补齐 **81 key** + 防回归测试（`pnpm test` **229/229**），client 最终 sha `07d9af06a984e583…`（246,540B）；② **设置页「选择已有会话」**：原为 M0 占位（走不通）→ 已实现（`GET /commander/sessions?workspaceId=…&limit=20`，title/createdAt/lastActiveAt；冷会话 `bindSelect` 支持；错误码映射）；**用户 live 实机确认「绑定和切换可以了」= live UI PASS**（设置页绑定项从 UNVERIFIED 转为 PASS）；③ **会话列表性能回归**：41–64s → **0.18–1.2s**（registry ids + 标题快照按 limit 分块并行），旧冷首调 52.9s → **0.23–0.33s**。相关文档 sha：`t65-t66-audit.md f84fe648a0acbd85`（tester 对齐后最终值）、`m2-m3-build.md b6128653e94716c9`（devops 最终 sha；§12.3 已含 Lead 决策「pressure 优化本轮不做」，取代旧 01390720/c12dcd8e…）、`m2m3-review.md fc90997d…`（不变）。
@@ -303,16 +303,23 @@ SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.st
 
 40. **UI 微调（2026-11-19 19:x，用户要求：去掉「指挥官归纳」这行说明）**：结论卡头部现在只有「结论」胶囊，不再带任何副标题——既去掉噪音，也避免对 summary 来源做无法核对的承诺。连带清理：`board.drawer.conclusionHint` 中英两份 key、`.dshc-d-conclusion-hint` 样式、设计稿里的 hint。验证：`tsc` 通过、全量 **306/306**、client harness **49/49 + 173/173**、`build` 通过（`lib/client.js` 与 live 同 inode）。部署：**硬刷新页面**。
 
+41. **视觉修复（2026-11-26 00:5x，用户反馈：原生壳球态①球周围总有矩形背景阴影、②推理中光晕不是完整圆而是被矩形限制）**：同一根因——球态窗口固定 **56×56**（`native/tauri/src/main.rs` `BALL_SIZE`），球 `inset: 4px`（48px），球外只有 4px 余量；WebView 只能渲染窗口矩形，越界部分被硬裁。① 旧 `box-shadow: 0 6px 18px` 只露出 4px，形成球周围的方形色块；② busy 关键帧 `0 0 0 8px` 外扩光晕需要 8px，被切成带矩形边的半截圆环（DSH 页内球用 `::after inset:-5px` 的 DOM 圆环，不受窗口限制，所以页内正常）。修法（方案 A，纯 Client CSS）：球的立体感全部改 `inset`（hover 同样），外投影清零；busy 改为「球面 `inset 0 0 18px` 呼吸光 + 球内 `::after` 圆环（72%→100%，直径 38px，始终在 48px 球内）」；角标阴影收进 3px；面板投影由 `0 18px 48px`（被 6px 余量裁光）改为 `0 1px 4px`。回归护栏 `tests/client/window-styles.test.ts` 5 条：读 `main.rs` 的 `BALL_SIZE` 与 CSS `inset` 校验 4px 余量、球/hover/busy 的每一层 box-shadow 必须是 `inset`、busy 圆环 scale 不越出球、面板阴影 reach ≤ 6px（旧样式上 3 条失败已实测）。验证：`tsc` host+client 通过；全量 **428/428**；client harness **51/51 + 195/195**；`build` 通过（含 `lib/window.js`）；A/B 视觉对比（旧/新 × 空闲/推理中，56×56 窗口 + 深色桌面）`docs/validation/m4-artifacts/native-shell-ball-clip-ab.png` 确认：旧态有方框底与方形光晕边，新态无方框、圆环完整。部署：**只改 Client 窗口 bundle → `build` 后重开壳窗口（或重启 DSH）加载新 `lib/window.js`**，无需 `build:native`。
+42. **功能（2026-11-26 09:1x，用户反馈：应用外的球点击后出现面板但球消失，期望球常驻）**：根因是原生壳「单窗口两态」——面板打开时同一个 56×56 窗口被 resize 成 420×660，球视觉上消失。修复（契约 `docs/architecture/native-shell-contract.md` v0.2）：① 壳改**双窗口**——`main` 球窗口常驻置顶，`panel` 面板窗口独立（默认隐藏；`set_mode('panel'|'board')` show+focus、`'ball'` hide；面板窗口关 = 收起、球窗口关 = 退壳；面板未加载完不 show，由 `on_page_load` 补）；② 窗口页按角色加载——球 URL `role=ball`、面板 URL `panel=1&role=panel`，`window-page.ts` 透传合法 role（缓存按角色区分），capability `windows` 加 `panel`；③ Client 新增 `window-role.ts`（`resolveWindowRole` / `showsPanel`），球窗口恒渲染球、面板窗口恒面板、无 role 保持旧同窗两态（浏览器调试不变）；球收起逻辑不变（点球/ESC/热键 hide 面板）。验证：`tsc` host+client；全量 **434/434**（新增 window-page role 3 条、window-role 3 条）；client harness **51/51 + 195/195**；`build`（含 `lib/window.js`）；`build:native` release 成功；`node tools/dev/native-ipc-probe.mjs` **PASS**（两个窗口 URL + 12 次 bounds 恒 56×56），`native-shell-smoke.mjs` / `native-window-probe.mjs` PASS；`node packages/dsh-commander/tests/e2e/m4-e2e.mjs` **10/10 PASS**；视觉截图（本地、含桌面内容不入库）确认面板打开时右下角球仍在。工具同步：`native-ipc-probe.mjs` 改为断言双窗口（旧断言期望 bounds 变大，已不适用），`native-shell-shot.mjs` 只让球窗口自动展开面板。部署：**`build` + `build:native` + 重装 + 重启 DSH**。
+
+43. **UI 定稿（2026-11-26 18:xx，用户连续反馈：球太小/太大、太 2D/灰、气泡与卫星风格不统一、白边硬）**：原生壳 v0.4 定稿并落 live。① **尺寸**：球窗 56→92→68→**76×76**，球 **60px**，四周 **8px 透明边**（`BALL_SIZE=76`、hover radius `BALL_SIZE/2-8`、CSS inset 8）；hover 1.055=63.3px，仍留 6.35px。② **材质**：最终选**液态金属**（银蓝 chrome conic + 白色高光 + 近黑底 + 银色定向 rim；不透明、无 backdrop；边缘 `mask 86/94` + `blur 2px` rim 光带，去掉 1px 白边）；B 脉冲核心/虹彩/荧光玻璃为探索阶段。③ **动效互换**：working 由脉冲改为**银白卫星沿球缘环行**（4.6s），气泡只显示「正在思考」文字，**去掉 spinner**；完成 5s「已完成 · 点击球查看」后转**绿色脉冲核心 + 双层声呐**未读，点击浮球/打开面板（`commander:mode` true）ack 清除，新回合 busy 重置，连接抖动保留。④ **气泡/快捷输入统一金属**：烟熏铬玻璃 + 银色描边 + 顶部金属反光 + 镀铬 `>`/发送键；快捷输入仍 0.8s 悬停唤起、Enter 发送/Esc 收起、空输入离开球收起、无 placeholder/关闭按钮。⑤ **悬停**：原生 80ms 轮询 NSEvent + 球窗 frame，发 `commander:ball-hover` 到球页/气泡页。⑥ **命令/事件**：新增 `set_quick_input`、`set_ball_unread`、`commander:quick-input`、`commander:ball-hover`、`commander:ball-unread`；ACL `allow-set-quick-input`、`allow-set-ball-unread`。文档：契约 v0.4；新验证 `docs/validation/native-shell-metal.md`（历史 B/Lite 阶段 `native-pulse-bubble.md` 保留并标注）；原型 `prototype/shell-ball-redesign/{unread,depth}.html` + README 最终落地；截图 `docs/validation/assets/native-shell-metal-{ball,ui}.png`。验证：`typecheck` PASS；全量 **452/452**；`build` + `build:native` PASS；真机隔离探针 `size=[76,76]`（球 60）；client harness smoke **52/52**（interact 因缺 jsdom 未跑）；live 已重装，插件管理器 `restart-required`，用户重启后生效。已知：成功态干净截图、左半屏气泡/拖球/面板隐藏逐项截图、页内 DSH 浮球统一仍待做；未读只存 bubble 页内存。
+
+44. **功能（2026-11-26 19:xx，用户需求：原生壳气泡在 commander 工作时展示具体动作）**：气泡 working 态从固定「正在思考」改为展示当前活动。① **规则**：`tool/call` 的 `arguments`（JSON 字符串）含非空顶层 `description` → 展示该值；没有就跳过（保留上一条，不猜工具名）。工具调用之间的 `assistant/message` 文本也展示（折叠换行/连续空白）。`turn/start` / `turn/end` 清空；没有活动时回退「正在思考」。② **数据面（加法）**：Host `commander.status` 增 `activity:{text,at}|null`，快照增 `commanderActivity`；`commander.message` 通道、消息环、存储表未动。③ **截断**：Host 截 200 字符（补 `...`）；Client 展示前截 40 字符（补 `...`），CSS `text-overflow: ellipsis` 兜住像素宽度。④ **实现**：`src/host/session/commander-events.ts`、`src/host/api/{state.ts,routes/handlers.ts}`、`src/host/index.ts`、`src/client/{state.ts,types.ts,bubble.ts,BubbleApp.tsx,window-styles.ts}`。⑤ **契约**：`native-shell-contract.md` v0.5、`m0-contract-patch.md` v1.1 加法字段；验证 `docs/validation/native-bubble-activity.md`。验证：`typecheck` PASS；全量 **459/459**；`build`（host+client+window）PASS；client harness smoke **52/52** + interact **195/195** + 新增 `bubble.mjs` **6/6**（jsdom 加载真实 `lib/window.js`；`/tmp/dshc-harness-modules` 提供 jsdom）。**部署**：Host 与 `lib/window.js` 都有改动 → `build` 后**重装 + 重启 DSH**；不重装仅硬刷新不会让 Host 发送新字段。
+
 ---
 
 ## 6. 未完成清单与建议路线
 
 | 阶段 | 范围（源自 `NEXT-PHASE.md` §4） | 状态/建议 |
 |---|---|---|
-| **M2 看板** | 六列/卡片/详情抽屉/人工改动 `board_edits` + 30s 合并注入/归档回收站/停滞徽标；无状态拖拽 | **已完成 + 2026-11-22 重构通过**（入口=主面板整页 `main` keyed `commander-board`；e2e 25/25 + devops 65 ASSERT + live Host 只读 PASS；live UI 物理点击 UNVERIFIED，见 §5 第 12 条） |
+| **M2 看板** | 六列/卡片/详情抽屉/人工改动 `board_edits` + 30s 合并注入/归档回收站（停滞徽标 2026-11-24 移除，见 §12）；无状态拖拽 | **已完成 + 2026-11-22 重构通过**（入口=主面板整页 `main` keyed `commander-board`；e2e 25/25 + devops 65 ASSERT + live Host 只读 PASS；live UI 物理点击 UNVERIFIED，见 §5 第 12 条） |
 | **M3 闭环** | `turn/end` 注入、`commander_task_report`、审批悬浮卡、accept/continue、播报 | **已完成 + PASS**（e2e 25/25、单测 201/201、harness 43/43+92/92、live Host 只读 PASS；live 审批卡/accept-rework/角标 UI UNVERIFIED，见 §5 第 12 条；3 个 known limitations 见 §5 第 11 条） |
 | **V6–V8** | V6 审批双处渲染；V7 Host→Client 推送；V8 插件重载 | **未做正式验证轮**（既有事实：M3 已实现审批双处渲染、SSE 实时可用、插件重载流程已验证；仍需按 NEXT-PHASE §3 出一轮正式 V6/V7/V8 记录） |
-| **M4** | 原生壳、系统级悬浮、全局热键、Windows、语音、周报 | **P1 已实现（macOS）**：Tauri 2 壳 + Host supervisor + 窗口页；单测/构建/smoke 通过，live 视觉未验证（§5 第 33 条）。P2（跨 Space/全屏、审批接管、Windows）未做 |
+| **M4** | 原生壳、系统级悬浮、全局热键、Windows、语音、周报 | **P1 已实现（macOS，当前 v0.5）**：Tauri 2 壳 + Host supervisor + 窗口页；液态金属球（76/60/8）+ 金属气泡/快捷输入 + 银白 working 卫星 + 绿色未读脉冲 + **气泡当前活动（工具 description / assistant 文本，40 字符 + `...`）**；单测/构建/smoke/真机探针通过（§5 第 43/44 条、`docs/validation/native-shell-metal.md`、`docs/validation/native-bubble-activity.md`）。P2（跨 Space/全屏、审批接管、Windows）未做 |
 | 工程收尾 | ① known limitations 后续项（board PATCH 事务化、fail-open metric 落点、rework 幂等键）；② git 工作树未提交（`master` @ `d8d1543`，含本文件）；③ `README.md` 仍写"未开始编码"（已过期）；④ live 测试数据清理（见 §8）；⑤ 缺 `docs/retro` 复盘；⑥ 未接 CI（201 条测试与 e2e 建议纳入）；⑦ devops `check-m0-api.sh` 有 MEDIUM（语法/覆盖缺口，独立 Live API 证据已由 tester 补）；⑧ `verify-live-m0.mjs` 的 inject 断言需更新为三项 locale | 交接后按优先级处理；清理 live 测试数据前先确认用户是否还要保留 |
 
 > **已知性能边界（2026-11-18 hotfix 后）**：会话列表在 **fresh 大工作区 `limit=50`** 时仍 >2s（实测 `capability-settings` 工作区 3.85–5.30s）；当前 **UI 已固定 `limit=20`**（设置页/自定义 attach 选择器），该范围实测 0.18–1.2s。**后端分页/缓存列为后续优化项**（不做无谓缓存；若未来 UI 需要更大列表，先加 cursor 分页再放开 limit）。
@@ -368,7 +375,7 @@ SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.st
 
 - `commander_task_dispatch` 允许 `draft/proposed/review`；`queued/running/blocked/done/cancelled/archived` 仍拒绝。`review` 续派 = 第 N+1 轮：`round+1`、上一轮 `acceptance`/`reportSummary` 进 `acceptanceHistory`、当前验收清空、`review→queued`。
 - review 首次调用 `needs_confirmation` **保持 review**（不再写成 proposed）；默认推荐原会话 attach；续派复用 `autoDispatch` 门控（100% 且开关打开可直接开新一轮，不再强制确认）。同一会话续派 brief 只发增量，不重复目标/上一轮验收。
-- `commander_task_dispatch` 新增 `instruction`（写进 brief 的「本轮要求」）与 `userRequest`（用户原话，展示/审计）；`DispatchRecord` 落 `brief/round/kind/userRequest`，详情返回 `dispatches[]` 全部轮次。
+- `commander_task_dispatch` 新增 `instruction`（写进 brief 的「本轮要求」）与 `userRequest`（用户原话，展示/审计）；`DispatchRecord` 落 `brief/round/kind/userRequest`，详情返回 `dispatches[]` 全部轮次。**（2026-11-26 起 `instruction` 已删除、brief 模板已退役，见 §13）**
 - 看板「返工」改为「继续派发」：`POST /continue`（`/rework` 兼容别名）只写 `pendingInstruction` + timeline，任务保持 review，向指挥官注入 `[task-continue]`；由指挥官再走 `commander_task_dispatch`。不再直接 prompt 工作会话。
 - Client 详情：标题第一；状态/工作区/轮次在标题下；轮次导航（无轮次级状态）；每轮「用户原话 → 派发 brief 原文 → 工作会话 → 报告/验收」；历史轮折叠；继续派发 composer；看板卡显示「第 N 轮」而非「验收 N/N」。
 - 旧轮次 `sessions` link 不参与状态跟踪/注入；`commander_task_report` 在 round>1 时只接受当前轮主会话。
@@ -413,3 +420,30 @@ SSE 事件：`snapshot`、`heartbeat`(15s)、`commander.message`、`commander.st
 - **验证（本地，2026-11-22）**：typecheck PASS；`test` **373/373**；`build` PASS；`build:client` + client harness **51/51 smoke + 182/182 interact**（合计 233/233）；m1/m1r/m23 e2e 见交付报告。
 - **部署**：Host 改动 + 新增 `lib/host/tasks/*` → `pnpm --filter dsh-commander build` 后**重装插件 + 重启 DSH**；Client 改动 → 硬刷新。存储零迁移（只加可选字段 `dependsOn/dependencyNotifiedAt/archivedFrom`，不新增表）。
 - **破坏性变更**：task_update 参数（status→action+expectedRevision）、看板 PATCH status（移除）、新增 task_get；旧任务记录可继续读写。
+
+---
+
+## 12. 看板「停滞」标记移除（2026-11-24）
+
+**行为变化**：看板不再有任何「疑似停滞 / 停滞」判断与徽标。长静默任务（例如 `running` 超过 20 分钟无活动）不再显示标记，也不触发任何自动动作（与之前一致：从来没有自动改状态）。
+
+- **Host**：删除 `STALE_AFTER_MS`（原 `src/host/config.ts`）、`taskIsStale`/`staleOf`（原 `src/host/board/service.ts`）、`TaskView.stale`/`TaskListRow.stale` 与全部下发点（`api/state.ts`、`api/routes/handlers.ts` 详情/列表/回收站、`query/tasks.ts`、`tools/index.ts` 的 `commander_task_list` schema+render）。`buildTaskView` 不再需要 `at` 参数（SSE 与快照调用同步简化）。
+- **Client**：删除 `isStaleTask`（`src/client/board.ts`）、卡片徽标渲染（`src/client/BoardPage.tsx`）、`TaskView.stale`/`TaskDetailView.stale`、`normalizeTaskDetail` 的 `stale`、`.dshc-board-stale` 样式与 `board.card.stale`/`board.card.staleBadge` 两份字典。
+- **契约**：`m2m3-contract-patch.md` §2.2/§2.3/§2.5/§2.7、`implementation-plan.md` §8.3/§10、`task-state-machine-final.md` §5.8/§5.7 表述同步；`task-query-design.md` 行字段去掉 `stale`。
+- **测试**：`m2-board.test.ts` 新增「快照/详情/PATCH 返回均不含 `stale` 字段（种子任务 21min 无活动）」，`interact.mjs` 新增「长静默 running 卡不渲染停滞徽标」；删除 `isStaleTask` 单测与 e2e 的 stale INFO 项。
+- **验证**：`typecheck` 通过；`test` 420/420；`build` 成功；client harness smoke 51/51 + interact 195/195；`m23-e2e.mjs` 26 PASS / 0 FAIL / 2 INFO。
+- **部署**：Host 改动 → `build` 后**重装插件 + 重启 DSH**；Client 一并重装后**硬刷新**。
+
+---
+
+## 13. 派发消息原样透传（2026-11-26，已实现，待 live 重装+重启）
+
+**用户口径**：派发时不允许程序拼接任何内容；指挥官给什么，派发时就是什么；标题/目标/验收提示/约束/上轮结论/上轮验收统统不由程序添加，也不自动截断。
+
+- **契约**：`docs/architecture/dispatch-prompt-passthrough.md`（取代 `implementation-plan.md` §9.5 与 `m5-continue-dispatch.md` §6）。
+- **工具面**：`commander_task_dispatch` 新增 `prompt`（工作会话首条消息全文）——首次调用必填，确认调用可省略（复用确认卡里那一份；传了以新传入覆盖）；删除 `instruction`；`userRequest` 语义不变（仅展示/审计）。
+- **Host**：`src/host/dispatch/brief.ts` 整文件删除；`DISPATCH_BRIEF_MAX_CHARS` 删除；`spawnDispatch` 直接 `prompt({content:[{type:'text', text: prompt}]})`；`PendingDecision.prompt`（内存 TTL 30m）；`DispatchRecord.brief` = 原文；`instruction` 字段不再写。
+- **指挥官输入面**：`commander_task_get` 新增 `goal / acceptance[] / reportSummary / acceptanceHistory[] / pendingInstruction`（列表接口不变），让指挥官自己写标题/目标/验收提示/上轮结论；system prompt 2c/2d/4c/4d 与 `[task-continue]`/`[task-unblocked]` 文案同步改为「自己写 prompt、批注原文必须写进去」。
+- **不再兜底**：漏写任务定义或漏抄看板批注，工作会话就收不到（用户明确取舍）。
+- **验证（本地，2026-11-26）**：`typecheck` PASS；`test` **463/463**；`build` PASS；`m1-e2e.mjs` 见 §13.1。
+- **部署**：Host 改动（含删除 `lib/host/dispatch/brief.js`）→ `build` 后**重装插件 + 重启 DSH**；Client 只删了一个未使用字段，重装后硬刷新即可。

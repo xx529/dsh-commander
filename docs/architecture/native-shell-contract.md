@@ -1,6 +1,6 @@
 # 原生壳浮窗契约（M4 / macOS 先行）
 
-> 版本：v0.1（2026-11-19）　状态：实现契约（P1 骨架）
+> 版本：v0.5（2026-11-26）　状态：实现契约（P1 骨架；v0.2 球常驻 + 独立面板窗口；v0.3 Lite 状态气泡窗；v0.4 液态金属球 / 金属气泡 / 银白 working 卫星 / 快捷输入 / 悬停高亮 / 未读脉冲；v0.5 气泡展示当前活动：工具 description / assistant 文本）
 > 上游需求：`docs/PRODUCT-DESIGN.md` §18 M4「原生壳、系统级悬浮、全局热键 → 任意应用可见」
 > 技术依据：`research/notes/float-tech.md` §5.2；`research/notes/dsh-capabilities.md` §1.4
 > 本文只描述**原生壳**这一层；`/commander/*` 既有数据面契约仍以 `docs/architecture/implementation-plan.md` §8 为准。
@@ -14,7 +14,8 @@
 | 能力 | P1 | P2 |
 |---|---|---|
 | 独立于 DSH 窗口的悬浮球（无边框、透明、置顶、无 Dock） | ✅ | — |
-| 点击展开/收起指挥面板（同窗两态：球 56×56 ↔ 面板 420×660） | ✅ | — |
+| 点击打开/收起指挥面板（球 76×76 窗口（球 60，四周 8px 透明边）常驻 + 独立面板窗口 420×660） | ✅ | — |
+| 状态气泡（working：当前工具 description / assistant 文本，缺省回退「正在思考」；完成：已完成·点击球查看，独立 click-through 窗 336×76） | ✅ | — |
 | 全局热键（默认 Option+Space，Carbon） | ✅ | — |
 | 位置持久化 + 多屏 clamp | ✅ | — |
 | 复用 `/commander/*` 数据面（快照、SSE、发消息） | ✅ | — |
@@ -39,8 +40,10 @@ DSH Host 进程
           │  stdio：NDJSON 控制帧（一行一个 JSON，stdout 只走协议）
           ▼
     Tauri 2 壳（macOS：.app 内的可执行文件或裸二进制）
-    ├── 窗口：透明、无边框、置顶、skipTaskbar、accessory 激活策略
-    ├── WKWebView 加载 GET /commander/window（同一 Host origin）
+    ├── 球窗口 main：透明、无边框、置顶、skipTaskbar、accessory 激活策略
+    ├── 面板窗口 panel：透明、无边框、默认隐藏；打开面板时显示并聚焦，球窗口保持可见
+    ├── 气泡窗口 bubble：透明、无边框、置顶、skipTaskbar、默认隐藏、click-through，不抢焦点
+    ├── 三个 WKWebView 都加载 GET /commander/window（同一 Host origin，role 区分）
     └── 全局热键、位置文件、父 PID 看门狗
 ```
 
@@ -72,7 +75,7 @@ DSH Host 进程
 
 ```ts
 { type: 'hello', protocol: 1, platform: 'darwin', arch: 'arm64', pid: number,
-  capabilities: ['ball','panel','hotkey'], hotkey: string | null }
+  capabilities: ['ball','panel','bubble','hotkey'], hotkey: string | null }
 { type: 'pong', at: number }
 { type: 'window/visibility', visible: boolean, panelOpen: boolean, focused: boolean }
 { type: 'window/bounds', x: number, y: number, width: number, height: number, scale: number }
@@ -109,15 +112,19 @@ Host → 壳：
 
 ## 4. 窗口行为
 
-| 项 | P1 实现 |
+| 项 | P1 实现（v0.5 三窗口：球 76×76 / 面板 420×660 / 气泡 336×76） |
 |---|---|
-| 窗口 | 透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、初始 56×56 |
-| 激活策略 | macOS `Accessory`（无 Dock 图标、不抢焦点） |
-| 悬浮球 | 56×56 圆形，显示可操作数徽标 |
-| 面板 | 420×660；从球锚点展开，超出屏幕时 clamp 到 `NSScreen.visibleFrame` |
-| 拖动 | 前端 pointer 事件：位移 > 4px 调 `startDragging()`；拖动后的 click 不展开 |
-| 位置 | `stateDir/window.json`（x/y/panelOpen/displayId）；壳启动读回，移动 debounce 300ms 写回 |
-| 热键 | `tauri-plugin-global-shortcut`，默认 `Alt+Space`；失败时降级为 `Ctrl+Alt+Space` 并在 hello 中上报 |
+| 窗口 | 球窗口 `main`（透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、76×76）；面板窗口 `panel`（透明、无边框、`skip_taskbar`、`resizable: true`、默认 `visible: false`，展开时 `always_on_top: false`）；气泡窗口 `bubble`（336×76、透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、默认 `visible: false`） |
+| 激活策略 | macOS `Accessory`（无 Dock 图标、不抢焦点）；气泡窗 `set_ignore_cursor_events(true)`，点击穿透 |
+| 悬浮球 | 76×76 窗口、60px 圆形（8px 透明边），**液态金属**：银蓝 chrome conic + 左上白色高光 + 近黑底部 + 银色定向 rim；不透明、无 backdrop；边缘 `mask 86/94` + `blur 2px` rim 光带，不再有 1px 白边；42px 冷核；无中心符号、无右下连接点；working 时**银白卫星**沿球缘环行（4.6s）；显示可操作数徽标；**面板打开时仍然常驻可见**，点击切换面板打开/收起。完成气泡收起后进入未读态：绿色脉冲核心 + 双层绿色声呐，直到点击浮球/打开面板清除。 |
+| 悬停高亮 | 原生每 80ms 在主线程读 `NSEvent.mouseLocation` 与球窗 `NSWindow.frame`，光标进入/离开球圆时发 `commander:ball-hover`（球页 + 气泡页）；球页面加 `is-hover`，气泡页用于「空输入 + 离开球」收起。不依赖窗口焦点，也不需要先点一下。 |
+| 快捷输入 | 光标在球内停留 0.8s → 复用 bubble 窗（336×76）：`set_ignore_cursor_events(false)`、show、set_focus，页面从状态气泡切到输入；与状态气泡同一套**烟熏铬玻璃**（银色描边、顶部金属反光、镀铬 `>` 与发送键）；输入条只有「> / 输入 / 发送」，无 placeholder、无关闭按钮；Enter 发送、Esc 收起；空输入时光标离开球自动收起，有内容则保留；发送走既有 `POST /commander/message`；收起后状态气泡恢复；光标离开球后才重新武装，避免原地反复弹；面板打开时关闭。 |
+| 状态气泡 | 监听 `commanderBusy` + `commanderActivity`：working 时气泡为**烟熏铬玻璃**（银色描边、顶部金属反光），显示**当前活动文案**——`tool/call` 参数含非空 `description` 时显示该值（没有则跳过、保留上一条），工具调用之间的 `assistant/message` 文本也显示；文案单行化，超过 40 字符补 `...`，CSS ellipsis 再兜住像素宽度；无活动时回退「正在思考」，**无 spinner**；success 才有绿色检查/绿色呼吸，球上是银白卫星环行；busy 结束显示「已完成 · 点击球查看」+ 绿色呼吸，约 5s 后文案收起，浮球转为未读绿色脉冲核心 + 双层声呐，直到用户点击浮球/打开面板（`commander:mode` true）确认。新回合 busy 时重置；连接短暂抖动不清掉已完成的未读，只有点击浮球/打开面板才 ack。面板打开时若已完成则直接确认、不再提醒。不改消息通道（`commander.message` 仍只发 assistant 文本），活动只作为 `commander.status` 的加法字段。球在右侧时气泡在左、在左侧时翻到右；与球心垂直对齐；拖球时跟随；气泡窗阴影收在 12px 内边距。 |
+| 面板 | 420×660（看板 980×700 级别按屏幕比例）；首次打开居中，用户本次运行内调整过的 frame 记在内存 |
+| 拖动 | 前端 pointer 事件：位移 > 4px 调 `startDragging()`（作用于当前窗口）；拖动后的 click 不切换面板 |
+| 位置 | 球的 x/y 存 `stateDir/window.json`（移动 debounce 300ms 写回）；面板 frame 只在本次运行内存中记录 |
+| 热键 | `tauri-plugin-global-shortcut`，默认 `Alt+Space`；打开/收起面板（球始终存在）；失败时降级为 `Ctrl+Alt+Space` 并在 hello 中上报 |
+| 关闭 | 球窗口关闭 = 退出壳；面板窗口关闭 = 收起面板（隐藏，不退出）；气泡窗口关闭 = 隐藏气泡（不退出） |
 | 退出 | 父 PID 看门狗 + Host 清理；不常驻 Dock/托盘（P2 可加托盘） |
 
 跨 Space/全屏（P1 已启用）：macOS `NSWindow.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]`（`enable_all_spaces`，objc2-app-kit 0.3.2，与 Tauri 同版本）。
@@ -127,14 +134,32 @@ Host → 壳：
 ## 5. 数据面与窗口页
 
 - 窗口页地址：`GET /commander/window?token=<一次性 token>`，token 由 supervisor 每次启动生成（32 hex），仅内存保存。
+- 壳按窗口角色追加查询参数：球窗口 `role=ball`，面板窗口 `panel=1&role=panel`，气泡窗口 `role=bubble`；`role` 只在取值合法时透传给窗口 bundle 的 `__COMMANDER_SHELL__.role`。`role=ball` 的页面只渲染球（点击发 `set_mode`），`role=panel` 的页面只渲染面板，`role=bubble` 的页面只渲染气泡；不带 `role` 时保持旧的同窗两态（浏览器直接打开 `?panel=1` 调试也走这条）。气泡窗不注入 fallback 球。
 - token 校验通过后返回 HTML（内联窗口 bundle），并 `Set-Cookie: commander_window=<token>; Path=/commander; HttpOnly; SameSite=Strict`。
 - 窗口页内同源访问 `/commander/state`、`POST /commander/message`、SSE，与 DSH 页内 client 完全同源同语义。
 - 静态资源（`lib/window.js`）由 Host 在 HTML 中内联返回；不额外暴露静态目录。
 - **已知限制（P1）**：`/commander/*` 写接口仍与现状一致，未对窗口页单独鉴权（loopback 信任）；token 只防止任意网页打开窗口页。P2 再评估全局 token。
+- 气泡窗与球窗共用同一套 store / SSE；working 活动来自 `commander.status.activity`，快照 `commanderActivity` 用于重连/首次打开恢复。
+- **v0.5 气泡活动（加法字段，不改既有事件语义）**：Host 在 `tool/call` 时解析 `data.arguments`（JSON 字符串）的顶层 `description`，非空则更新 `activity={text,at}`；为空/缺失/解析失败则跳过。工具调用之间的 `assistant/message` 文本也更新 activity。`turn/start`、`turn/end` 清空。Host 折叠空白并截到 200 字符（补 `...`）；Client 展示前再截到 40 字符。`commander.message` 通道仍只发 assistant 文本，不新增消息类型、不落库。
+
+### 5.1 气泡窗命令与事件（v0.4；v0.5 增加 SSE `commander.status.activity`）
+
+| 方向 | 名称 | 语义 |
+|---|---|---|
+| 气泡页 → 壳 | `invoke('set_bubble', { visible: boolean })` | 状态气泡显隐；working/success 由页面驱动；快捷输入打开时忽略，关闭后由页面重新驱动 |
+| 气泡页 → 壳 | `invoke('set_quick_input', { open: boolean })` | 收起/打开快捷输入；打开时气泡窗变为可交互、可聚焦 |
+| 气泡页 → 壳 | `invoke('set_ball_unread', { unread: boolean })` | 5s 文案收起后打开浮球未读绿色脉冲；点击浮球/打开面板时清除 |
+| 壳 → 气泡页 | `emit_to('bubble', 'commander:bubble-side', 'left'\|'right')` | 气泡在球左/右侧翻转；页面据此改尾巴方向 |
+| 壳 → 球页/气泡页 | `emit_to('main'/'bubble', 'commander:ball-hover', boolean)` | 原生轮询到的球悬停状态；球页 `is-hover`，气泡页空输入离开时收起 |
+| 壳 → 气泡页 | `emit_to('bubble', 'commander:quick-input', boolean)` | 0.8s 停留后切到快捷输入；收起时切回状态气泡 |
+| 壳 → 球页 | `emit_to('main', 'commander:ball-unread', boolean)` | 完成提示收起后的未读脉冲状态 |
+| 壳内部 | `show_bubble` / `position_bubble` / `spawn_hover_watcher` / `show_quick_input` / `close_quick_input` | 贴球定位、翻转、面板打开时隐藏、球移动时跟随、悬停/停留检测、快捷输入聚焦/收起 |
+
+ACL：`build.rs` 的 `app_manifest.commands` 加入 `set_bubble`、`set_quick_input`、`set_ball_unread`；`capabilities/default.json` 加入 `bubble` 窗口、`allow-set-bubble`、`allow-set-quick-input`、`allow-set-ball-unread`。
 
 ---
 
-### 5.1 审批桥（P1）
+### 5.2 审批桥（P1）
 
 - Host `src/host/native/approval-bridge.ts` 以 `{ prepend: true }` 监听 `approval/request`。
 - 接管条件：supervisor `phase === 'running' && visible && focused`；任一不满足直接 `next()`（DSH 页内审批卡照旧）。
@@ -172,13 +197,13 @@ Host → 壳：
 
 | 层 | 用例 | 方式 |
 |---|---|---|
-| 单测（Host） | 帧编解码、token、supervisor 握手/心跳/退避/退出、路径解析、审批桥接管/回落/超时/退出取消 | `packages/dsh-commander/tests/unit/native-*.test.ts`，fake ChildProcess |
-| 单测（Client） | 窗口页 App 的球/面板/发送渲染 | `tests/client/window-*.test.ts`（tsx + jsdom harness） |
+| 单测（Host） | 帧编解码、token、supervisor 握手/心跳/退避/退出、路径解析、审批桥接管/回落/超时/退出取消、窗口页 role 注入 | `packages/dsh-commander/tests/unit/native-*.test.ts`，fake ChildProcess |
+| 单测（Client） | 窗口页 App 的球/面板/发送渲染；`role` → 渲染决策 | `tests/client/window-*.test.ts`（tsx + jsdom harness） |
 | 构建 | `tsc`、`tsdown`（client + window）、`cargo build` | 本地 |
 | 集成 | 隔离 `DSH_HOME` 启动 Host → 壳 spawn → 窗口页 200 → 发一条消息 | `packages/dsh-commander/tests/e2e/m4-e2e.mjs`（macOS 真机） |
 | 手工 | 球置顶/拖动/热键/多屏/重启恢复、看板操作、壳内审批 | 用户走查（截图证据入 `docs/validation/**`） |
 
-验收（P1）：DSH 窗口最小化或切到别的应用后，悬浮球仍在最前；Option+Space 呼出/收起；面板能收发消息；Host 退出后壳 2s 内退出；`/commander/health` 的 `nativeShell` 状态正确。
+验收（P1）：DSH 窗口最小化或切到别的应用后，悬浮球仍在最前；Option+Space 呼出/收起面板；**面板打开时球仍然常驻可见、可再次点击收起**；面板能收发消息；Host 退出后壳 2s 内退出；`/commander/health` 的 `nativeShell` 状态正确。
 
 ---
 

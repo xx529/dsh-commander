@@ -134,6 +134,7 @@ commander_task_dispatch({ taskId, candidate:{workspaceId, mode, sessionId?}, req
   - link 解析**只认活跃任务**：任务缺失或已终态（done/cancelled/archived）的历史 link 视为无 link——同一会话可被重新 attach，link 被覆盖前到达的 `turn/start` 不得记到旧任务上（2026-11-18 修正：否则新任务永远停在 queued）。
   - 孤儿补偿除「无 link 时暂存 turn/start」外，还记录「会话最近一次 turn/start」：`reconcile` 时二者任一命中都补 `queued→running`；启动时对仍是 queued 的任务按会话最后回合事件回填一次（重启会丢事件，不重放）。
 - brief 文本沿用 plan §9.5 模板；**不带** `[commander-dispatch]` marker 与 `taskId/decisionId/sessionId` 元数据行（2026-11-18 修正：工作会话不需要内部 id，关系在持久化里）。
+  - **2026-11-26 取代**：模板已退役，改为 `commander_task_dispatch.prompt` 原样透传（Host 零拼接、零截断），见 `dispatch-prompt-passthrough.md`。
 
 ### 1.7 M1 验收映射调整（Lead/用户 2026-11-17 决策）
 

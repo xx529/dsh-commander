@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>壳浮球 · 中心符号与状态气泡</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body data-state="idle" data-theme="dark" data-clip="0" data-mark="none">
+  <main class="page">
+    <header class="masthead">
+      <div class="mast-copy">
+        <p class="kicker">DSH COMMANDER · NATIVE SHELL</p>
+        <h1>壳浮球 <span class="slash">/</span> 符号与状态气泡</h1>
+        <p class="lede">旗标拿掉，材质和气泡接管表达。球窗仍是 56 px；气泡是另一个透明窗。</p>
+      </div>
+      <dl class="facts" aria-label="设计约束">
+        <div><dt>球窗</dt><dd>56 × 56</dd></div>
+        <div><dt>气泡窗</dt><dd>336 × 76</dd></div>
+        <div><dt>运行时依赖</dt><dd>0</dd></div>
+      </dl>
+    </header>
+
+    <section class="toolbar" aria-label="演示控制">
+      <div class="ctl">
+        <span class="ctl-label">状态</span>
+        <div class="seg" data-control="state">
+          <button type="button" data-value="idle" class="on">待机</button>
+          <button type="button" data-value="hover">悬停</button>
+          <button type="button" data-value="busy">思考</button>
+          <button type="button" data-value="pending">待处理</button>
+          <button type="button" data-value="offline">离线</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="ctl-label">桌面</span>
+        <div class="seg" data-control="theme">
+          <button type="button" data-value="dark" class="on">深色</button>
+          <button type="button" data-value="light">浅色</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="ctl-label">窗口边界</span>
+        <button type="button" class="toggle" data-control="clip" aria-pressed="false"><span></span></button>
+      </div>
+      <p class="toolbar-hint">点球体循环状态</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>实际尺寸</h2>
+        <p>1× · 四套新方案已去旗标与右下状态点；「现状」保留两者仅作对照</p>
+      </div>
+      <div class="strip">
+        <div class="strip-item">
+          <div class="win" data-orb="current"></div>
+          <span class="strip-label">现状</span>
+        </div>
+        <div class="strip-item">
+          <div class="win" data-orb="aurora"></div>
+          <span class="strip-label"><b>A</b> 极光玻璃</span>
+        </div>
+        <div class="strip-item">
+          <div class="win" data-orb="pulse"></div>
+          <span class="strip-label"><b>B</b> 脉冲核心</span>
+        </div>
+        <div class="strip-item">
+          <div class="win" data-orb="orbit"></div>
+          <span class="strip-label"><b>C</b> 轨道信标</span>
+        </div>
+        <div class="strip-item">
+          <div class="win" data-orb="prism"></div>
+          <span class="strip-label"><b>D</b> 液态棱镜</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>中心符号</h2>
+        <p>点一张应用到下面四套材质；默认「无」，也可以留一个活点或命令符</p>
+      </div>
+      <div class="mark-study">
+        <button class="mark-card" type="button" data-set-mark="none" aria-label="应用中心符号：无">
+          <div class="mark-stage"><div class="win" data-orb="aurora" data-fixed-mark="none"></div></div>
+          <span class="mark-name">无符号</span>
+          <span class="mark-note">让材质自己说话，最干净</span>
+          <span class="tag tag-rec">推荐</span>
+        </button>
+        <button class="mark-card" type="button" data-set-mark="core" aria-label="应用中心符号：核心点">
+          <div class="mark-stage"><div class="win" data-orb="aurora" data-fixed-mark="core"></div></div>
+          <span class="mark-name">核心点</span>
+          <span class="mark-note">一颗会呼吸的点，最像活物</span>
+        </button>
+        <button class="mark-card" type="button" data-set-mark="trio" aria-label="应用中心符号：三点">
+          <div class="mark-stage"><div class="win" data-orb="aurora" data-fixed-mark="trio"></div></div>
+          <span class="mark-name">三点</span>
+          <span class="mark-note">推理中的三点，忙时依次跳动</span>
+        </button>
+        <button class="mark-card" type="button" data-set-mark="chevron" aria-label="应用中心符号：折角">
+          <div class="mark-stage"><div class="win" data-orb="aurora" data-fixed-mark="chevron"></div></div>
+          <span class="mark-name">折角</span>
+          <span class="mark-note">命令符 &gt;，比旗子抽象</span>
+        </button>
+        <button class="mark-card" type="button" data-set-mark="ring" aria-label="应用中心符号：环">
+          <div class="mark-stage"><div class="win" data-orb="aurora" data-fixed-mark="ring"></div></div>
+          <span class="mark-name">环</span>
+          <span class="mark-note">瞳孔或准星，忙时旋转</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>四个材质</h2>
+        <p>2.4× 放大 · 球体 inset 4 px · 中心符号跟随上方选择</p>
+      </div>
+      <div class="cards">
+        <article class="card" data-variant="aurora">
+          <header class="card-head">
+            <span class="idx">A</span>
+            <h3>极光玻璃</h3>
+            <span class="tag tag-rec">推荐</span>
+          </header>
+          <div class="stage">
+            <div class="win" data-orb="aurora"></div>
+            <span class="scale-note">2.4×</span>
+          </div>
+          <p class="concept">深蓝玻璃里压一层极光。边缘冷光缓慢巡游，高光跟着指针走，像一块有生命的玻璃，不抢桌面。</p>
+          <ul class="motion">
+            <li><b>待机</b><span>极光内缘 9 s 巡游，球体 5 s 呼吸 0.5 px</span></li>
+            <li><b>悬停</b><span>高光跟随指针，边缘增亮，整体 1.055 倍</span></li>
+            <li><b>思考</b><span>极光提速到 2.2 s，内核 1.6 s 脉冲</span></li>
+          </ul>
+          <footer class="card-foot"><span>窗口 56 px · 光全部收在球内</span><span>CSS + 指针变量</span></footer>
+        </article>
+
+        <article class="card" data-variant="pulse">
+          <header class="card-head">
+            <span class="idx">B</span>
+            <h3>脉冲核心</h3>
+            <span class="tag">低噪</span>
+          </header>
+          <div class="stage">
+            <div class="win" data-orb="pulse"></div>
+            <span class="scale-note">2.4×</span>
+          </div>
+          <p class="concept">黑曜石外壳，中心一颗冷蓝核心。平时几乎静止，只在思考时从中心推开两层声呐，像深海里的一次回声。</p>
+          <ul class="motion">
+            <li><b>待机</b><span>核心 4 s 呼吸，外圈只有一条 1 px 冷光</span></li>
+            <li><b>悬停</b><span>核心放大提亮，球体轻浮，不发光晕</span></li>
+            <li><b>思考</b><span>双层声呐 1.8 s 交错扩散，推到球缘消失</span></li>
+          </ul>
+          <footer class="card-foot"><span>窗口 56 px · 最低视觉噪音</span><span>纯 CSS</span></footer>
+        </article>
+
+        <article class="card" data-variant="orbit">
+          <header class="card-head">
+            <span class="idx">C</span>
+            <h3>轨道信标</h3>
+            <span class="tag">最辨识</span>
+          </header>
+          <div class="stage">
+            <div class="win" data-orb="orbit"></div>
+            <span class="scale-note">2.4×</span>
+          </div>
+          <p class="concept">把球缩小一圈，让两条轨道把轮廓撑大。一条弧带亮头，一条反向追光。远看是信号塔，近看才知道是球。</p>
+          <ul class="motion">
+            <li><b>待机</b><span>双弧 8 s / 12 s 反向巡航，亮头绕行</span></li>
+            <li><b>悬停</b><span>双弧收拢提速，球体前倾 1.04 倍</span></li>
+            <li><b>思考</b><span>弧线 2.4 s 追光，亮头呼吸</span></li>
+          </ul>
+          <footer class="card-foot"><span>窗口 56 px · 轮廓最大</span><span>纯 CSS</span></footer>
+        </article>
+
+        <article class="card" data-variant="prism">
+          <header class="card-head">
+            <span class="idx">D</span>
+            <h3>液态棱镜</h3>
+            <span class="tag">最张扬</span>
+          </header>
+          <div class="stage">
+            <div class="win" data-orb="prism"></div>
+            <span class="scale-note">2.4×</span>
+          </div>
+          <p class="concept">黑镜球里两团液态冷光缓慢融合，虹彩沿内缘转。静止时像一颗深色珍珠，动起来才露出里面的棱镜。</p>
+          <ul class="motion">
+            <li><b>待机</b><span>双液团 9 s / 11 s 融合，虹彩环 12 s 自转</span></li>
+            <li><b>悬停</b><span>液团加速，高光扫过，球体 1.055 倍</span></li>
+            <li><b>思考</b><span>液面翻涌，色相在青蓝之间偏移</span></li>
+          </ul>
+          <footer class="card-foot"><span>窗口 56 px · 最费 GPU 的一档</span><span>CSS + 指针变量</span></footer>
+        </article>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>状态气泡</h2>
+        <p>独立透明窗 · 鼠标穿透 · 球窗仍是 56 px</p>
+      </div>
+
+      <div class="bubble-rows">
+        <article class="bubble-row">
+          <div class="bubble-scene">
+            <div class="bubble-win" data-visible="true">
+              <div class="bubble" data-tone="working">
+                <span class="bubble-icon"><svg class="spin" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-opacity=".24" stroke-width="2" /><path d="M13.6 8A5.6 5.6 0 0 0 8 2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></span>
+                <span class="bubble-copy"><span class="bubble-text">正在创建任务</span><span class="bubble-detail">修复登录重试</span></span>
+                <span class="bubble-tail"></span>
+              </div>
+            </div>
+            <div class="win" data-orb="aurora"></div>
+          </div>
+          <div class="bubble-info">
+            <h3>单气泡 <span class="tag tag-rec">推荐</span></h3>
+            <p>一条状态在原地更新，最省空间。做完变绿勾，失败变琥珀感叹号，2.4 秒后自动收起。</p>
+            <ul class="motion">
+              <li><b>进入</b><span>180 ms 弹入，文字 160 ms 交叉淡入</span></li>
+              <li><b>更新</b><span>旧文案上移淡出，新文案从下 4 px 进入</span></li>
+              <li><b>收起</b><span>成功 2.4 s / 失败 5 s / 新动作到来立即替换</span></li>
+            </ul>
+            <span class="bubble-window-note">气泡窗 336 × 76 · 球窗 56 × 56</span>
+          </div>
+        </article>
+
+        <article class="bubble-row">
+          <div class="bubble-scene is-stack">
+            <div class="bubble-win is-stack" data-visible="true">
+              <div class="bubble-stack">
+                <div class="bubble is-old" data-tone="typing">
+                  <span class="bubble-icon"><span class="typing-dots"><i></i><i></i><i></i></span></span>
+                  <span class="bubble-copy"><span class="bubble-text">正在理解指令</span></span>
+                </div>
+                <div class="bubble is-mid" data-tone="working">
+                  <span class="bubble-icon"><svg class="spin" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-opacity=".24" stroke-width="2" /><path d="M13.6 8A5.6 5.6 0 0 0 8 2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></span>
+                  <span class="bubble-copy"><span class="bubble-text">正在创建任务</span></span>
+                </div>
+                <div class="bubble is-new" data-tone="working">
+                  <span class="bubble-icon"><svg class="spin" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-opacity=".24" stroke-width="2" /><path d="M13.6 8A5.6 5.6 0 0 0 8 2.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></span>
+                  <span class="bubble-copy"><span class="bubble-text">正在更新任务</span><span class="bubble-detail">调整优先级</span></span>
+                  <span class="bubble-tail"></span>
+                </div>
+              </div>
+            </div>
+            <div class="win" data-orb="aurora"></div>
+          </div>
+          <div class="bubble-info">
+            <h3>气泡栈</h3>
+            <p>保留最近三条推理，最新的贴球，旧的向上淡出。适合很短的一串动作，让人看见推理轨迹。</p>
+            <ul class="motion">
+              <li><b>进入</b><span>新气泡从球侧弹入，旧气泡上移 8 px 并变淡，最新一条保持全亮</span></li>
+              <li><b>上限</b><span>最多三条，第四条把最旧的挤掉</span></li>
+              <li><b>代价</b><span>气泡窗高度从 76 提到 172，桌面占用更大</span></li>
+            </ul>
+            <span class="bubble-window-note">气泡窗 336 × 172 · 单条时收回 76</span>
+          </div>
+        </article>
+
+        <article class="bubble-row">
+          <div class="bubble-scene">
+            <div class="bubble-win" data-visible="true">
+              <div class="bubble" data-tone="typing">
+                <span class="bubble-icon"><span class="typing-dots"><i></i><i></i><i></i></span></span>
+                <span class="bubble-copy"><span class="bubble-text">正在理解指令</span><span class="bubble-detail">等待第一步</span></span>
+                <span class="bubble-tail"></span>
+              </div>
+            </div>
+            <div class="win" data-orb="aurora"></div>
+          </div>
+          <div class="bubble-info">
+            <h3>打字气泡</h3>
+            <p>首字之前的等待态：三个点呼吸，0.6 到 1.2 秒后换成具体动作。它回答的是「指挥官还在不在」。</p>
+            <ul class="motion">
+              <li><b>待机</b><span>三点 1.2 s 依次呼吸，气泡保持展开</span></li>
+              <li><b>接手</b><span>第一个 tool 到达后，整条气泡换成「正在创建任务」</span></li>
+              <li><b>限制</b><span>超过 1.2 s 还没有动作时，才降到「正在思考」兜底</span></li>
+            </ul>
+            <span class="bubble-window-note">和单气泡共用 336 × 76 窗</span>
+          </div>
+        </article>
+      </div>
+
+      <div class="bubble-demo">
+        <div class="demo-stage">
+          <div class="bubble-scene" id="demoScene">
+            <div class="bubble-win" id="demoBubbleWin" data-visible="false">
+              <div class="bubble" id="demoBubble" data-tone="working">
+                <span class="bubble-icon" id="demoBubbleIcon"></span>
+                <span class="bubble-copy">
+                  <span class="bubble-text" id="demoBubbleText"></span>
+                  <span class="bubble-detail" id="demoBubbleDetail"></span>
+                </span>
+                <span class="bubble-tail"></span>
+              </div>
+            </div>
+            <div class="win" data-orb="aurora"></div>
+          </div>
+          <p class="demo-hint">球窗 56 × 56 · 气泡窗 336 × 76。气泡不接收鼠标，点球仍然打开面板。</p>
+        </div>
+        <div class="demo-actions">
+          <button type="button" data-bubble-action="create">创建任务</button>
+          <button type="button" data-bubble-action="update">更新任务</button>
+          <button type="button" data-bubble-action="dispatch">派发</button>
+          <button type="button" data-bubble-action="fail">失败</button>
+          <button type="button" data-bubble-action="chain" class="is-strong">播放推理链</button>
+          <button type="button" data-bubble-action="reset" class="is-ghost">重置</button>
+        </div>
+        <p class="demo-log" id="demoLog">等待播放</p>
+      </div>
+
+      <div class="bubble-note">
+        <p><b>窗口怎么放：</b>球窗保持 56 × 56；气泡是第二个透明窗，click-through，不抢焦点。贴屏幕右边时气泡在球左侧，贴左边自动翻到右侧；拖球或打开面板时收起，落点后再出现。</p>
+        <p><b>数据从哪来：</b>Host 现在只发 turn/start、turn/end 与 assistant 文本，tool/进度被 M0 契约过滤。要出现「正在创建任务」，需要新增 activity 事件，从 tool/call + tool/result 映射；否则只能做 lite 版（正在思考 / 本轮完成）。</p>
+        <p><b>连接状态去哪了：</b>球上不再放右下绿点。离线时球体整体去饱和并停动，面板头保留连接点与文字（实时同步 / 轮询同步 / 离线）。原来的点是重复信号，而且原生壳一直显示、没有 tooltip。</p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <p>球体去旗标是纯 CSS；气泡不是。气泡要新增一个透明窗和 Host activity 事件，属于 Native 与 Host 契约变更，这次只做原型，没有改生产代码。</p>
+      <p>球窗固定 56 × 56、球体 inset 4 px，任何外扩光晕都会被窗口硬裁。四套材质都把光收在球内；气泡的阴影也收在 12 px 内边距里。球上不设右下状态点，连接状态交给球体降级材质和面板文字。</p>
+    </footer>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

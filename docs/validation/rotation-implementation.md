@@ -111,3 +111,47 @@ R1 e2e 关键证据（`tests/artifacts/r1/e2e/rotation.json` / `state-after.json
 - **Host 变更 + 新增 `lib/host/rotation/*` 文件**：必须 `remove_bundle` + `install_bundle`（或 `dsh plugin remove/add`）后**重启 DSH**；只重启不生效（快照式安装）。
 - **Client 变更**：重装/重启后硬刷新页面；新增设置分组与 i18n 键。
 - 关闭态（默认）行为与升级前完全一致；`rotation` 字段仅在用户保存配置或首次换任时落库。
+
+## 5C. 2026-11-26 增量：换任标题 + 工具审计联动
+
+> 角色：lead（实现 + 自测）　环境：仓库工作区；live 未重启前不生效。
+> 这是 **R1 之后的加法式改动**，不改轮换判定/门控/提交顺序/回滚矩阵。
+
+### 5C.1 换任标题
+
+- 每次换代（自动到点 / 手动「立即换任」）在新会话简报注入成功后调用 `sessionController.rename({sessionId, title})`，标题固定为 `第 N 任 · YYYY-MM-DD`（N=新代际，本地时区当天）；`rename` 失败只 `warn`，不参与提交条件。
+- 2026-11-26 第二轮修订：`rotation.enabled=true` 时，手动「绑定到新会话」也设标题（含首任 `第 1 任 · 日期`）；轮换关闭时保持不设。两条路径共用 `generation-defaults.ts`。
+- 证据：`tests/unit/rotation-title.test.ts`（3 条）、集成用例断言 `rename` 入参与失败降级；隔离 e2e 会话日志出现 `session/title` 事件（`source.kind=user`，标题 `第 2 任 · 2026-11-26`）。
+
+### 5C.2 工具审计（dsh-trace-inspect）
+
+- `commander.rotation.toolAudit`（默认 `true`，可 PUT 关闭；旧配置无需迁移）。设置页「会话轮换」分组新增开关，轮换关闭时置灰；`enabled=true` 时手动「绑定到新会话」也受该开关控制。
+- 换代时在 `waitForAgent` 之后、简报注入前，用 `node:http` 直连本机 `POST /trace-inspect/api/tool-audit?sessionId=<new>` + `{enabled:true}`（3s 超时）。`404` = 插件未装/未启用 → 静默跳过；`409`/非 2xx/网络错误 → 只 `warn`。**不使用全局 fetch**（Host 可能设置 `NODE_USE_ENV_PROXY`）。
+- 证据（2026-11-26 复跑）：
+  - `pnpm --filter dsh-commander typecheck` PASS；
+  - `pnpm --filter dsh-commander test` **442/442 PASS**（新增 `tests/unit/tool-audit.test.ts`、集成用例：默认探测 / 关闭不探测 / 404 不阻断 / PUT 校验与回显）；
+  - `pnpm --filter dsh-commander build` PASS；client harness **52/52 + 195/195 PASS**（新增设置页工具审计开关断言）；
+  - `tests/e2e/r1-e2e.mjs` **18/18 PASS**（隔离 profile 未装 trace-inspect，审计请求 404 被静默跳过，轮换全链路不受影响）；
+  - 一次性跨插件 e2e（`/tmp/r1audit-e2e.mjs`，隔离 profile + `dsh plugin add github:xx529/dsh-trace-inspect#v0.12.13`）：force 换任后
+    `$DSH_HOME/dsh-trace-inspect/tool-description/<newSessionId>.json` = `{"enabled":true,...}`，**17/17 PASS**。
+- 未覆盖：live 上真实 MCP 工具的 `description` 参数渲染（需重启后人工看轨迹行）；审计开关在用户首轮前手动改动的交互。
+
+### 5C.3 手动「绑定到新会话」与换代对齐（2026-11-26 第二轮）
+
+> 触发：用户反馈「立刻换任」会改标题/预置工具审计，但「绑定到新会话」两项都失效。
+> 口径：B2——仅 `rotation.enabled=true` 时对齐（含首次绑定）；轮换关闭保持旧行为；不生成交接简报（D1 不变）；不改 Client 文案。
+
+- 根因：标题/审计只写在 rotation-only 的 `run()`；`bindNew()` 是独立创建路径，未接 `rename`/`setToolAudit`，且不读 `resolveRotation()`；`rotationForBinding()` 写回丢 `toolAudit`。
+- 修复：
+  - 新增 `src/host/rotation/generation-defaults.ts`（`applyToolAuditDefault` / `applyRotationTitleDefault`，失败只 warn）；
+  - `rotation/service.ts` 改用 helper，保持 `audit → inject → rename`；
+  - `binding.ts` 在 `writeBinding()` 前应用两个默认，`BindingServiceDeps` 增加 `setToolAudit/logger`；`rotationForBinding()` 补 `toolAudit`；
+  - `index.ts` 的审计闭包同时注入 binding 与 rotation；
+  - 标题超时：换代 10s、手动绑定 3s；手动绑定并行执行审计与标题。
+- 证据（2026-11-26 第二轮复跑）：
+  - `pnpm --filter dsh-commander typecheck` PASS；
+  - `pnpm --filter dsh-commander test` **471/471 PASS**；
+  - 其中 `tests/integration/rotation.test.ts` **21/21 PASS**（新增：手动绑定标题+审计 / 轮换关闭不应用 / 首次绑定 `第 1 任` / `toolAudit=false` 不发请求且写回不丢 / 审计失败不阻断 / rename 失败不阻断 / 选择已有会话不应用）；
+  - `pnpm --filter dsh-commander build` PASS；
+  - `tests/e2e/r1-e2e.mjs` **18/18 PASS**（隔离 profile；初始绑定在轮换关闭时保持不设标题/审计，force 换任全链路与 `toolAudit` 持久化正常）。
+- 未覆盖：真实 live 的 dsh-trace-inspect 跨插件审计（沿用 5C.2 的一次性 e2e 结论）；手动绑定后新会话首个 turn 的 UI 轨迹行需重装后人工确认；未跑 m1r e2e（本轮未改 attach 派发链路）。

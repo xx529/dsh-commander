@@ -10,6 +10,8 @@
     "test": "pnpm --filter dsh-commander test",
     "prototype:panel": "python3 -m http.server 4310 --directory prototype/panel-redesign",
     "spike:build": "bash tools/dev/spike-build.sh",
-    "spike:smoke": "bash tools/dev/smoke-m0.sh"
+    "spike:smoke": "bash tools/dev/smoke-m0.sh",
+    "prototype:board": "python3 -m http.server 4312 --directory prototype/board-redesign",
+    "prototype:ball": "python3 -m http.server 4314 --directory prototype/shell-ball-redesign"
   }
 }

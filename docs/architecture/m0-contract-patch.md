@@ -112,6 +112,7 @@ Client 心跳看门狗：Host 每 15s 发 heartbeat；连续 45s 收不到任何
 
 - 订阅：既有 `ctx.on('session/event', (session, event) => …)`（V2 已验证的方式）；仅处理 `session.id === config.commander.sessionId`。
 - 采集：`assistant/message` 的 `data.message.content` 中 `type==='text'` block 拼接；**只发这一条**（不发流式 chunk、不发 tool/result、不发中间进度）。
+  - v1.1 加法（2026-11-26，原生壳气泡）：Host 额外解析 `tool/call` 的 `arguments.description` 与工具调用之间的 assistant 文本，写入 `commander.status.activity` / 快照 `commanderActivity`；**不产生消息、不落库、不改变上面这条消息通道**。
 - 去重键：`messageId = 'asst_' + turn + '_' + seq`（`turn = event.data` 所在 turn；`seq = event.seq`）；内存环按 `messageId` 去重（同一事件重复投递只发一次）。
 - 空文本：不产生 `commander.message`（`commander.status` 仍会更新 busy=false）；若需要"本轮无文本"占位由面板用 status 渲染，不在消息流造假消息。
 - 顺序：`order = ++localOrder` 由 Host 单调分配；**SSE 事件按 order 发送**；快照 `messages` 按 `order` 升序；面板以 `(rev, order)` 判重/丢弃乱序。
@@ -124,10 +125,11 @@ Client 心跳看门狗：Host 每 15s 发 heartbeat；连续 45s 收不到任何
 
 ```json
 // event: commander.status
-{ "busy": true, "lastTurnId": 4, "rev": 44, "at": 1763450000123 }
+{ "busy": true, "lastTurnId": 4, "activity": { "text": "查看当前目录", "at": 1763450000123 }, "rev": 44, "at": 1763450000123 }
 ```
 
 - `lastTurnId`：最近一次 `turn/start.data.turn`，无则 `null`。
+- `activity`（v1.1 加法，可省略）：当前回合最近一条可展示动作，`{text, at}` 或 `null`；来源为 `tool/call` 参数的 `description`（无则跳过）或 assistant 文本；`turn/start` / `turn/end` 清空。文本折叠空白、截到 200 字符（补 `...`）。
 - `pendingInteraction` **不在 M0 事件中**（审批/提问只在界面层，M3 由 V6 另行渲染；M0 面板只显示 busy）。
 
 ### 1.6 快照新增字段（`GET /commander/state`）
@@ -137,6 +139,7 @@ Client 心跳看门狗：Host 每 15s 发 heartbeat；连续 45s 收不到任何
 ```json
 {
   "commanderBusy": false,
+  "commanderActivity": { "text": "查看当前目录", "at": 1763450000123 },
   "messages": [
     { "messageId": "req_7f3c…", "role": "user", "text": "…", "at": 1763450000000, "order": 41, "truncated": false },
     { "messageId": "asst_4_37", "role": "assistant", "text": "…", "at": 1763450002100, "order": 42, "turnId": 4, "seq": 37, "truncated": true, "fullChars": 12034 }
@@ -147,6 +150,7 @@ Client 心跳看门狗：Host 每 15s 发 heartbeat；连续 45s 收不到任何
 | 字段 | 规则 |
 |---|---|
 | `messages` | 最近 ≤200 条（按 `order` 升序）；快照永远是"当前内存环尾部 200 条" |
+| `commanderActivity` | v1.1 加法字段：当前回合活动 `{text, at}` 或 `null`；与 `commander.status.activity` 同源，用于气泡重连恢复 |
 | 消息字段 | `messageId`、`role:'user'\|'assistant'`、`text`、`at`、`order`、`truncated`；assistant 另带 `turnId`/`seq`；被截断时带 `fullChars` |
 | 截断 | 文本 >8192 字符：头 6144 + 尾 2048，中间 `\n…[truncated N chars]…\n`，`truncated:true`；请求端不截断（拒绝超长） |
 | 保留 | 内存环 ≤500 条；快照只给 200；Host 重启后尽力从 live 会话事件回填 ≤200（回填 best-effort，失败即空，不报错） |
@@ -155,9 +159,9 @@ Client 心跳看门狗：Host 每 15s 发 heartbeat；连续 45s 收不到任何
 
 | event | data | 触发 |
 |---|---|---|
-| `snapshot` | 完整快照（含 `messages`/`commanderBusy`） | 连接/重连（沿用） |
+| `snapshot` | 完整快照（含 `messages`/`commanderBusy`/`commanderActivity`） | 连接/重连（沿用） |
 | `commander.message` | `{messageId, role, text, at, order, turnId?, seq?, truncated?, fullChars?}` | 用户 echo / 助手文本到达 |
-| `commander.status` | `{busy, lastTurnId, rev, at}` | turn/start、turn/end、绑定后首次恢复 |
+| `commander.status` | `{busy, lastTurnId, activity?, rev, at}` | turn/start、turn/end、工具 description、assistant 文本、绑定后首次恢复 |
 | `task.updated` / `tasks.changed` / `dispatch.updated` / `binding.updated` / `capability.applied` / `heartbeat` | 沿用 §8.4 | 沿用 |
 
 - `commander.message` 的 `id:` 沿用 `rev`（= 全局 rev），`data.order` 用于同 rev 内排序；面板丢弃 `rev < lastSnapshotRev` 的事件，再按 `order` 排序。

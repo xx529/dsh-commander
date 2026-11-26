@@ -11,7 +11,7 @@
 
 | # | 主题 | 唯一口径 |
 |---|---|---|
-| 1 | 开关 | `config.commander.rotation.enabled` **默认 `false`**。关闭时系统行为与现状完全一致（只有设置页「绑定到新会话」这一条手动路径，**不生成任何简报**）。 |
+| 1 | 开关 | `config.commander.rotation.enabled` **默认 `false`**。关闭时系统行为与现状完全一致（只有设置页「绑定到新会话」这一条手动路径，**不生成任何简报**；标题/工具审计也仅在 `enabled=true` 时应用）。 |
 | 2 | 周期 | `periodDays` 整数 **1–7**，默认 `1`。**自然日 00:00 对齐**：`dueAt = 本任开始日 + periodDays 天的本地 00:00`（例：11-23 10:45 开始、1 天 → 11-24 00:00）。仍然只在 `turn/end` / 投递前懒检查，不跑午夜定时器。 |
 | 3 | 触发 | 一级：指挥官会话 `turn/end`（异步、不阻塞）；二级兜底：`POST /commander/message` 投递前；手动：`POST /commander/rotation`（仅 `enabled=true` 时可用）。**不做定时器**（插件无 scheduler 冻结决策）。 |
 | 4 | 门控 | 到点只是必要条件；还必须 `!busy` + 无 `pendingDispatch` + 无未 flush 的看板注入 + 无并发换任。任一不满足 → 本次跳过，下次边界重试。 |
@@ -47,7 +47,7 @@
 
 | ID | 决策 | 来源 |
 |---|---|---|
-| D1 | 轮换**默认关闭**；关闭态唯一路径是设置页「绑定到新会话」，该路径**不做轮换总结**（保持 M0/M1R 行为） | 用户 2026-11-19 |
+| D1 | 轮换**默认关闭**；关闭态唯一路径是设置页「绑定到新会话」，该路径**不做轮换总结**（保持 M0/M1R 行为）。**2026-11-26 修订**：D1 只约束交接简报；`enabled=true` 时手动「绑定到新会话」与换代一样应用标题/工具审计 | 用户 2026-11-19 / 2026-11-26 |
 | D2 | 周期可配 **1–7 天**，默认 1 天 | 用户 2026-11-19 |
 | D3 | 交接简报**包含用户最近原话**（≤10 条 / ≤800 字，默认开，可关） | 用户 2026-11-19 |
 | D4 | 触发点：**`turn/end` 优先，消息投递前兜底** | 用户 2026-11-19 |
@@ -206,6 +206,23 @@ const message = buildContextMessage(brief.text, {
 - 现在注入回指挥官的有两种：`commander-session-reply`（工作会话回复）与 `commander-board-edit`（看板人工改动）。新增的 `commander-handoff` **不参与**去重键（一次性，消息 id 用 `handoff_<newSessionId>_<generation>`）。
 - 面板消息环**不渲染**交接简报（与现有注入一致，环只收 assistant 文本与用户 echo）；DSH 聊天里显示为上下文卡，面板用系统提示告知「已换任」。
 
+### 5.4 新会话标题（加法式）
+
+- `sessionController.create()` **不接受 title**（`dsh-api-session-controller` 的 `SessionCreateRequest` 只有 `workspaceId/cwd/sessionId/agentPreset`）。标题必须另调同控制器的 `rename({ sessionId, title })`（`SessionRenameRequest`）。
+- 时机：**换代**——`create` 返回并校验 `newSessionId` 之后、**交接简报注入成功之后**、`commitRotation()` 之前；**手动「绑定到新会话」**——`create/selectModel` 后、`writeBinding()` 之前（没有简报；与审计并行，超时 3s）。`rename` 走 `sessionTitle.rename(session, title)`，以 **user 来源**追加 `session/title` 事件：**钉住标题**，后续自动标题（首次用户消息触发的 LLM 生成）不会覆盖。
+- 格式：`第 N 任 · YYYY-MM-DD`（`N` = 换任后的新代际 = 旧任 + 1；日期取**本机时区**的换任当天，同一自然日内多次换任靠 `N` 区分）。实现：`src/host/rotation/title.ts` 的 `rotationTitle()`。
+- 失败策略：标题是展示层产物——`rename` 抛错（含部署未挂 `session-title` 服务）只记 `warn`，**不阻断**交接、不参与提交条件；回滚矩阵不变。
+- 作用范围：**换代**（自动到点 / 手动「立即换任」）+ 设置页「绑定到新会话」（仅 `rotation.enabled=true`，含首次绑定，首任标题 `第 1 任 · YYYY-MM-DD`）。「选择已有会话」不改标题。两条路径共用 `src/host/rotation/generation-defaults.ts`，失败策略一致。
+
+### 5.5 工具审计联动（dsh-trace-inspect，加法式）
+
+- 目标：换代创建的新会话**默认预置** dsh-trace-inspect 的「工具审计」（开启后 MCP 等注入类工具多一个必填 `description` 参数，仅用于轮次轨迹）。由设置页开关控制（`commander.rotation.toolAudit`，默认 `true`），可随时关闭。
+- 外部契约：该插件把开关持久化在 `$DSH_HOME/dsh-trace-inspect/tool-description/<sessionId>.json`，并由 `dsh-trace-inspect/desc-inject` Host 子插件提供 `POST /trace-inspect/api/tool-audit?sessionId=<id>`、body `{enabled:boolean}`（仅本机回环、仅首个 `turn/start` 之前可改；409 = 已封存）。**没有 Cordis 服务可供调用**，所以 Commander 走这个 HTTP 路由，属于跨插件私有契约，失败必须降级。
+- 时机：**换代**——`create` → `waitForAgent` 之后、**交接简报注入之前**（简报注入不触发 turn，不会封存；用户首轮之前完成设置）；**手动「绑定到新会话」**——`create/selectModel` 后、`writeBinding()` 之前（避免绑定切换后并发消息抢在审计前触发首轮）。实现：`src/host/rotation/tool-audit.ts` 的 `setSessionToolAudit()`，两条路径共用 `generation-defaults.ts`。
+- 传输：固定 `node:http` 直连 `127.0.0.1:<webServer.port>`，**不用全局 fetch**（Host 可能设置 `NODE_USE_ENV_PROXY`，fetch 会把回环请求交给代理）；3s 超时。
+- 结果映射与失败策略：`404` = 插件未安装/未启用 → **静默跳过**；`409` / 非 2xx / 网络错误 → 只记 `warn`，**不阻断**换代、不参与提交条件；`toolAudit=false` 时完全不发请求。
+- 作用范围：**换代**（自动到点 / 手动「立即换任」）+ 设置页「绑定到新会话」（仅 `rotation.enabled=true`，含首次绑定）。「选择已有会话」不预置审计。两条路径共用 `src/host/rotation/generation-defaults.ts`；`toolAudit=false` 时都不发请求。
+
 ---
 
 ## 6. 配置与存储
@@ -220,6 +237,8 @@ interface RotationConfig {
   periodDays: number
   /** 是否把用户最近原话放进简报，默认 true。 */
   includeUserTail: boolean
+  /** 换代后是否给新会话预置 dsh-trace-inspect 工具审计，默认 true；插件缺失时自动跳过。 */
+  toolAudit?: boolean
   /** 当前第几任，默认 1；任何绑定变更 +1 或按目标会话回填。 */
   generation?: number
   /** 本任开始时间（ms）；绑定成功时写入，换任时重置。 */
@@ -227,8 +246,9 @@ interface RotationConfig {
 }
 ```
 
-- 读取归一化：`rotation === undefined` → `{ enabled:false, periodDays:1, includeUserTail:true, generation: <现有 commander 记录数 + 1>, generationStartedAt: <绑定时间或 config.updatedAt> }`；**不主动写盘**，等用户保存或首次轮换时才落库。
-- `PUT /commander/config` 校验：`periodDays` 必须是 1–7 的整数（`invalid_request` + `field='commander.rotation.periodDays'`）；`enabled/includeUserTail` 必须是布尔；`generation*` 由 Host 管理，**patch 里出现即拒绝**（`field='commander.rotation.generation'`）。
+- 读取归一化：`rotation === undefined` → `{ enabled:false, periodDays:1, includeUserTail:true, toolAudit:true, generation: <现有 commander 记录数 + 1>, generationStartedAt: <绑定时间或 config.updatedAt> }`；`toolAudit` 缺省按 `true`（旧配置无需迁移）；**不主动写盘**，等用户保存或首次轮换时才落库。
+- 写回不丢字段：任何绑定/换任写入（`rotationForBinding`）必须保留 `toolAudit`（含 `false`），否则下一次读取会回默认 `true`。
+- `PUT /commander/config` 校验：`periodDays` 必须是 1–7 的整数（`invalid_request` + `field='commander.rotation.periodDays'`）；`enabled/includeUserTail/toolAudit` 必须是布尔；`generation*` 由 Host 管理，**patch 里出现即拒绝**（`field='commander.rotation.generation'`）。
 - 用户把 `enabled` 从 false 改成 true 且 `generationStartedAt` 为空时，Host 在写配置时补 `now` 作为本任起点（下次到期 = 次日 00:00）。
 - `GET /commander/config` 返回只读视图（保留现有字段，追加 `rotation`）。
 
@@ -405,6 +425,9 @@ formerCommanders: Array<{ sessionId: string; generation: number; startedAt: numb
 | A10 | client | 设置页：开关/1–7 选择/用户原话开关/本任信息/历任列表（≤10）+「查看前任」（`openSession` 或 `session-transcript`） |
 | A11 | client | `rotation.updated` → 面板系统提示「第 N 任已接手」+ 分隔线；不重复渲染简报 |
 | A12 | e2e | 隔离 profile + stub 模型：手动 `POST /commander/rotation` 全链路；旧会话 `session-transcript` 可读；新会话首个 turn 的请求里含简报文本（断言请求体） |
+| A13 | unit/integration | 换任标题：`rotationTitle()` 本地日期补零/同日恒定；换代提交前调用 `rename({sessionId, title:'第 N 任 · YYYY-MM-DD'})`；`rename` 失败只 warn、交接照常提交；手动「绑定到新会话」在 `rotation.enabled=true` 时同样设标题（含首任 `第 1 任`），轮换关闭时不设；「选择已有会话」不设 |
+| A14 | unit/integration/e2e | 工具审计：`toolAudit` 默认 true 且可 PUT 关闭；换代在简报注入前 POST `/trace-inspect/api/tool-audit`；`404/非 2xx/网络错误` 不阻断换代；`toolAudit=false` 不发请求；真实 dsh-trace-inspect 下新会话状态文件 `enabled=true` |
+| A15 | integration | 手动「绑定到新会话」与换代对齐（B2）：`enabled=true` 时预置审计 + 写标题（首任 `第 1 任`）；`enabled=false` 时都不做；`toolAudit=false` 不发请求但照写标题；审计/rename 失败只 warn、绑定照常 200；`rotationForBinding()` 写回保留 `toolAudit=false` |
 
 > 现有 306 条单测必须保持全绿（基线证据见 `docs/validation/rotation-contract-facts.md`）。
 
@@ -436,13 +459,16 @@ formerCommanders: Array<{ sessionId: string; generation: number; startedAt: numb
 | 模块 | 文件 |
 |---|---|
 | 简报纯函数 | `packages/dsh-commander/src/host/rotation/brief.ts` |
+| 换任标题纯函数 | `packages/dsh-commander/src/host/rotation/title.ts` |
+| 新一任默认副作用（审计 + 标题，换代/手动绑定共用） | `packages/dsh-commander/src/host/rotation/generation-defaults.ts` |
+| 工具审计联动（本机 HTTP） | `packages/dsh-commander/src/host/rotation/tool-audit.ts` |
 | 配置归一化/到点 | `packages/dsh-commander/src/host/rotation/config.ts` |
 | 轮换服务（判定/门控/注入/提交/退避/触发） | `packages/dsh-commander/src/host/rotation/service.ts` |
 | 提交点（不 markMissing） | `packages/dsh-commander/src/host/session/binding.ts` `commitRotation()` |
 | 上下文消息 `source.generation` | `packages/dsh-commander/src/host/session/deliver.ts` |
 | 路由/快照/SSE | `src/host/api/{server.ts,routes/handlers.ts,state.ts,validation.ts,errors.ts}`、`src/host/index.ts` |
 | 客户端 | `src/client/{state.ts,store.ts,types.ts,SettingsSection.tsx,locales.ts}` |
-| 测试 | `tests/unit/rotation-brief.test.ts`、`tests/integration/rotation.test.ts`、`tests/client/rotation.test.ts` |
+| 测试 | `tests/unit/rotation-brief.test.ts`、`tests/unit/rotation-title.test.ts`、`tests/unit/tool-audit.test.ts`、`tests/integration/rotation.test.ts`、`tests/client/rotation.test.ts` |
 
 ## 14. 不修改声明
 

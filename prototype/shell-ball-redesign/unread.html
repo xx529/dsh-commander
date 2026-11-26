@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>未读提示 · 4 个方向</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./unread.css">
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div>
+        <p class="kicker">DSH COMMANDER · UNREAD AFFORDANCE</p>
+        <h1>“有信息待查看” <span class="slash">/</span> 4 个方向</h1>
+        <p class="lede">完成气泡收起后，球上留什么提示？球窗仍是 56×56，所有效果都收在窗内；下面放大 2.7× 看细节。</p>
+      </div>
+      <div class="facts">
+        <div><span>球体</span><b>48 px</b></div>
+        <div><span>窗口</span><b>56 px</b></div>
+        <div><span>交互</span><b>点击球查看</b></div>
+      </div>
+    </header>
+
+    <section class="grid" aria-label="未读提示方案">
+      <article class="option">
+      <header class="opt-head"><span class="idx">00</span><h2>现状</h2><span class="tag muted">仅颜色</span></header>
+      <div class="stage"><div class="win">
+          <div class="ball u-current">
+        <span class="surface">
+          <span class="core"></span>
+          <span class="rim"></span>
+          <span class="sonar s1"></span>
+          <span class="sonar s2"></span>
+        </span>
+        
+      </div>
+    </div></div>
+      <p class="desc">绿色核心 + 单环呼吸。你能看出“变了”，但看不出“有东西要看”。</p>
+    </article><article class="option recommended">
+      <header class="opt-head"><span class="idx">A</span><h2>未读角标</h2><span class="tag rec">推荐</span></header>
+      <div class="stage"><div class="win">
+          <div class="ball u-badge">
+        <span class="surface">
+          <span class="core"></span>
+          <span class="rim"></span>
+          <span class="sonar s1"></span>
+          <span class="sonar s2"></span>
+        </span>
+        <span class="unread-badge"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M4 6.5l6 4.8 6-4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </div></div>
+      <p class="desc">左上角绿色信封 + 轻微呼吸，球体保持原样；最直白，也不和右上任务数角标打架。</p>
+    </article><article class="option">
+      <header class="opt-head"><span class="idx">B</span><h2>信封核心</h2><span class="tag">最像消息</span></header>
+      <div class="stage"><div class="win">
+          <div class="ball u-envelope">
+        <span class="surface">
+          <span class="core"></span>
+          <span class="rim"></span>
+          <span class="sonar s1"></span>
+          <span class="sonar s2"></span>
+        </span>
+        <span class="envelope-core"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M4 6.5l6 4.8 6-4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </div></div>
+      <p class="desc">球心一枚绿色信封 + 绿色呼吸，语义最强；但会临时占用你之前定下的“无中心符号”。</p>
+    </article><article class="option">
+      <header class="opt-head"><span class="idx">C</span><h2>双环信标</h2><span class="tag">低噪动态</span></header>
+      <div class="stage"><div class="win">
+          <div class="ball u-beacon">
+        <span class="surface">
+          <span class="core"></span>
+          <span class="rim"></span>
+          <span class="sonar s1"></span>
+          <span class="sonar s2"></span>
+        </span>
+        <span class="signal-dot"></span>
+      </div>
+    </div></div>
+      <p class="desc">双层绿色声呐 + 右侧信号点，不加文字，靠 ping 的动势提示“有新东西”。</p>
+    </article><article class="option">
+      <header class="opt-head"><span class="idx">D</span><h2>卫星绕行</h2><span class="tag">最显眼</span></header>
+      <div class="stage"><div class="win">
+          <div class="ball u-orbit">
+        <span class="surface">
+          <span class="core"></span>
+          <span class="rim"></span>
+          <span class="sonar s1"></span>
+          <span class="sonar s2"></span>
+        </span>
+        <span class="orbit"><span class="satellite"></span></span>
+      </div>
+    </div></div>
+      <p class="desc">一颗绿色卫星绕球飞行 + 淡轨迹；最活、最抓眼，但更像“运行中”而不是“待查看”。</p>
+    </article>
+    </section>
+
+    <footer class="foot">
+      <p>现状是已上线的绿色核心 + 单环；A–D 是新的“有信息待查看”提示方向。实际尺寸 48 px，截图放大 2.7×。</p>
+      <p class="hint">推荐 A：不改球心、不抢任务角标，信封 + 呼吸已经足够表达“有一条要看的消息”。</p>
+    </footer>
+  </main>
+</body>
+</html>

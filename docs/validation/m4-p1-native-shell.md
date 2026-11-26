@@ -289,6 +289,30 @@
 - 旧 child 的 `exit` 事件只处理"当前 child"，避免旧进程退出触发二次重启；
 - 壳侧新增单实例锁 `shell.pid`（存活则退出）；Host supervisor `start()` 前清理旧锁，避免旧 Host 的锁阻塞新壳。
 
+## 3.24 点击面板后球消失 → 球窗口常驻 + 独立面板窗口（2026-11-26 09:1x）
+
+用户反馈：应用外的悬浮球点击后出现对话框，但球同时消失；期望球常驻。
+
+原因：壳是**单窗口两态**（`main` 窗口在 56×56 ↔ 420×660 间 resize/移动），打开面板必然把球窗口变成面板，球视觉上消失。
+
+修复（契约 `docs/architecture/native-shell-contract.md` v0.2）：
+
+- 壳改为**双窗口**：`main`（球，56×56、透明置顶）常驻；`panel`（面板，默认 `visible:false`，展开时 show + focus，收起时 hide）独立存在。`CloseRequested`：球窗口 = 退壳；面板窗口 = 收起。
+- 窗口页按角色加载：球窗口 URL 追加 `role=ball`，面板窗口追加 `panel=1&role=panel`；`window-page.ts` 只接受合法 role 并写入 `__COMMANDER_SHELL__.role`，缓存按角色区分。
+- Client：`window-role.ts` 的 `showsPanel(role, expanded)` 决定渲染——球窗口恒球、面板窗口恒面板、无 role 保持旧同窗两态（浏览器调试不受影响）。
+- capability `windows` 增加 `panel`，否则面板窗口的 `invoke('set_mode')` 会被 ACL 拒绝。
+
+验证（本次全部实跑）：
+
+- `pnpm --filter dsh-commander typecheck` 通过；全量单测 **434/434**（新增 `window-page` role 透传/缓存、`window-role` 渲染决策）；client harness `smoke 51/51 + interact 195/195`。
+- `pnpm --filter dsh-commander build:native` → release 构建成功（53.68s），产物写入 `packages/dsh-commander/native/dist/darwin-arm64/`。
+- `node tools/dev/native-ipc-probe.mjs` **PASS**：window urls 同时出现 `?token=ipc&role=ball` 与 `?token=ipc&panel=1&role=panel`；12 次 `window/bounds` 全部 `56x56` 且坐标不变（球窗口在 panel/board/panel/ball 切换中不动）；`invoke('panel'|'board'|'panel'|'ball')` 全部 ok。
+- `node tools/dev/native-shell-smoke.mjs` PASS；`node tools/dev/native-window-probe.mjs` PASS（真实窗口 bundle 执行并请求数据面）。
+- `node packages/dsh-commander/tests/e2e/m4-e2e.mjs` **10/10 PASS**。
+- 视觉：`tests/artifacts/m4/shots/window-panel.png`（本地生成，含桌面内容，**不入库/不外发**）——面板窗口打开时右下角球窗口仍在，徽标可读。
+
+部署：壳二进制 + Client 窗口 bundle 均变 → `pnpm --filter dsh-commander build && pnpm --filter dsh-commander build:native`，然后**重装 + 重启 DSH**（安装是快照式）。
+
 ## 4. 未验证 / 边界（如实标注）
 
 1. **窗口视觉/热键/拖动**：需用户安装后真机走查；当前沙箱不能写 `~/Library/WebKit`，只能证明 WebView 加载与 JS 执行。

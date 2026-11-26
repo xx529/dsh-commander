@@ -2,6 +2,7 @@
 
 > 日期：2026-11-22
 > 状态：**定案（已实施，2026-11-22）**。本文取代 `task-state-machine-contract-patch.md` 中的讨论口径；两者冲突时以本文为准。
+> **2026-11-27 补丁**：`accept-handoff-contract.md` 扩展了 `review→done` 的 actor（新增 `commander_accept`，仅限有未终结后继的任务）、新增 `acceptNote/acceptedBy` 字段与 `commander_task_accept` 工具；与本文冲突处以补丁文档为准。
 > 范围：**单任务状态机、工具语义、依赖编排、看板与验证**。
 > 不在范围：Task Group / 子任务 / 单任务并行多工作区（仅保留讨论稿，见旧文档 §13）；无人值守全自动；多确认卡。
 > 吸收来源：DSH **0.2.2-rc.3** 的 Agent Team 任务模型（`@deepseek-ai/dsh-agent-team` / `@deepseek-ai/dsh-tool-agent-team`）中可复用的纪律：action enum、`expectedRevision` CAS、`commander_task_get`、派生 `ready`、任务记录单一通用 mutator、不自动启动。
@@ -179,6 +180,7 @@ flowchart LR
 | `commander_task_get` | 读 | 取单条最新任务（version/status/ready/waitingFor/block） |
 | `commander_task_list` | 读 | 任务查询：状态/时间/标题过滤 + 分页 + 计数（见 §5.8） |
 | `commander_workspace_list` | 读 | 已启用工作区目录（只读；派发目标） |
+| `commander_workspace_update` | 写（摘要） | 工作区摘要（与设置页同一字段）；不动白名单/能力策略（见 §5.9） |
 | `commander_session_list` | 读 | 指定工作区的根会话列表（只读；attach 目标） |
 | `commander_task_update` | 写（action） | 元数据、依赖、受阻、取消、恢复；**任务记录唯一通用编辑入口** |
 | `commander_task_dispatch` | 写（领域动作） | 派发/续派；写 `proposed/queued/blocked(spawn失败)` |
@@ -231,7 +233,9 @@ flowchart LR
 
 ### 5.5 `commander_task_dispatch`
 
-保留现有语义：首次恒 `needs_confirmation`（除非 `autoDispatch` 门控通过）；确认带 `decisionId + confirmTarget + requestId`；续派带 `instruction/userRequest`。
+保留现有语义：首次恒 `needs_confirmation`（除非 `autoDispatch` 门控通过）；确认带 `decisionId + confirmTarget + requestId`。
+
+派发消息（2026-11-26 起，见 `dispatch-prompt-passthrough.md`）：工作会话首条消息 = `prompt` 参数原文，由指挥官自己写；首次调用必填，确认调用可省略（复用确认卡里保存的同一份，传了则以新传入为准）。Host **零拼接、零 trim、零截断**，模板（标题/目标/验收提示/约束/上轮结论）全部删除；`instruction` 参数移除。`userRequest` 仍只做展示/审计。
 
 在创建 decision 之前新增守卫：
 
@@ -239,6 +243,7 @@ flowchart LR
 2. `dependsOn` 未全部满足 → `rejected(code='dependency_unmet', message=缺失 id)`，**不生成确认卡**。
 3. 另一个任务已有未决确认 → `rejected(code='pending_dispatch_exists')`；同一任务重试仍允许覆盖旧决策。
 4. 任务有 pending decision 时，只允许同任务重试；其它任务拒绝。
+5. `prompt` 为空/缺省（首次调用；确认调用回退确认卡里的那份）→ `rejected(code='invalid_prompt')`，不建卡、不派发。
 
 确认路径在写循环内重读 `status/round/dependsOn`，避免与 accept/cancel/编辑竞态；spawn 失败写 `blocked` 时带 reason 并重试 version。
 
@@ -267,7 +272,7 @@ flowchart LR
 
 | 工具 | 入参（要点） | 出参（要点） |
 |---|---|---|
-| `commander_task_list` | `statuses?`、`includeArchived?`、`q?`、`searchIn?`、`timeField?`、`since?`、`until?`、`limit?`、`offset?` | `{total, offset, limit, returned, hasMore, nextOffset, now, counts, columns, pendingDispatch, tasks[]}`；行含 `version/round/dispatchable/waitingFor/blockReason/acceptanceCount/stale` |
+| `commander_task_list` | `statuses?`、`includeArchived?`、`q?`、`searchIn?`、`timeField?`、`since?`、`until?`、`limit?`、`offset?` | `{total, offset, limit, returned, hasMore, nextOffset, now, counts, columns, pendingDispatch, tasks[]}`；行含 `version/round/dispatchable/waitingFor/blockReason/acceptanceCount` |
 | `commander_workspace_list` | 无 | `{total, workspaces:[{id,name,path,summary,policy,sessionCount}]}`；**只出配置中已启用（allowed）的** |
 | `commander_session_list` | `workspaceId`（**必填**，id/名称/路径或 cwd 子目录）、`q?`、`includeArchived?`、`since?/until?`、`limit?/offset?` | `{total, offset, limit, returned, hasMore, nextOffset, now, workspace, sessions[]}`；**只出根会话** |
 
@@ -281,6 +286,22 @@ flowchart LR
 6. 每个工具的 `output.schema` 必须与真实返回逐字段一致（`additionalProperties: false`），`output.render` 是模型唯一可见内容。
 
 完整设计（参数语义、渲染格式、字段清单、测试清单、待核实项）见 `task-query-design.md`。
+
+### 5.9 工作区摘要写工具（2026-11-24 增补）
+
+`commander_workspace_update`：指挥官维护工作区摘要，与设置页「工作区」里的「摘要」是**同一个字段**（`WorkspaceRecord.summary`），谁最后写谁生效。
+
+| 项 | 规则 |
+|---|---|
+| 入参 | `workspaceId`（必填；id/名称/路径）+ `summary`（必填，0–500 字；首尾空白 trim；仅空白=清空） |
+| 解析 | 在 registry ∪ stores 的工作区目录内解析；歧义 → `invalid_request`（列出候选 id）；不存在 → `unknown_workspace` |
+| 写盘 | 只写 `summary` / `summarySource='model'` / `summaryUpdatedAt`（非空时）；`allowed`、`capabilityPolicy`、`name`、`path` 原样保留；已有记录用字段级原子读改写（不覆盖人类并发写入），无记录时按默认记录创建（`allowed=false`） |
+| 出参 | `{workspaceId, name, summary, summarySource:'model', summaryUpdatedAt?}`；失败 `{ok:false, code, message}` |
+| UI | 写入后 Host 广播整帧 `snapshot`（与 `PUT /commander/workspaces` 一致），设置页打开时同步显示 |
+| 人改 | `PUT /commander/workspaces` 仍可改同一字段，`summarySource='manual'`；最后一次写入生效 |
+
+- 不开放改 `allowed` / `policy`：白名单与能力策略仍是人专用设置。
+- 摘要供 Jev 判定、`commander_workspace_list` 与设置页展示；工具只负责保存，不校验内容真伪。
 
 ---
 
@@ -327,7 +348,7 @@ function dependencyMet(dep: TaskRecord): boolean {
 ```text
 [task-unblocked] taskId=<B> status=draft
 依赖任务 A（taskId=<A>，标题「…」）已验收通过；B 已满足依赖。
-请调用 commander_task_dispatch(taskId=<B>, requestId=<新ID>, instruction=<若需要>) 派发。
+请调用 commander_task_dispatch(taskId=<B>, requestId=<新ID>, prompt=<你写给工作会话的全文>) 派发。
 首次仍走确认（或按 autoDispatch 配置自动派发）。本次只提醒，不改任务状态。
 ---
 dependsOn=<A>
@@ -424,7 +445,7 @@ export function checkTransition(task: TaskRecord, to: TaskStatus, ctx: Transitio
 | 列 | 状态 | 卡片要点 | 操作 |
 |---|---|---|---|
 | 待派发 | `draft`、`proposed` | 草案 chip；待确认高亮；无卡提示「需重新发起派发」；依赖 badge「等待 A 验收」 | 取消；详情 |
-| 待运行 | `queued` | 已派发，等待回合开始；stale 徽标 | 取消；打开会话 |
+| 待运行 | `queued` | 已派发，等待回合开始 | 取消；打开会话 |
 | 运行中 | `running` | 最近活动；轮次；会话数 | 取消；打开会话 |
 | 受阻 | `blocked` | `block.reason` | 取消；详情 |
 | 待验收 | `review` | 验收条数/证据不足；继续派发 badge | 验收通过/继续派发/归档/取消 |
@@ -572,6 +593,7 @@ archivedFrom?: TaskStatus     // archive 时记录，restore 用
 | 14 | 工作区/会话查询从任务工具拆出：`commander_workspace_list` / `commander_session_list`；工作区只出已启用的 |
 | 15 | `commander_session_list` 必须指定工作区（id/名称/路径/cwd），只出根会话（排除 subagent/teammate/指挥官） |
 | 16 | `commander_task_list` 不再返回工作区目录；`pendingContinue` 在工具行里改名为 `pendingInstruction`（API `TaskView` 字段名暂不动） |
+| 17 | 工作区摘要开放给指挥官写：与设置页同一字段，写 `summarySource='model'`；`allowed`/`policy` 仍人专用 |
 
 ---
 

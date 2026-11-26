@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>看板 · 视觉方案（原型）</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 一次性原型：三套看板/回收站结构，?variant=A|B|C 切换。 -->
+  <div class="app" id="app">
+    <header class="topbar" id="topbar"></header>
+    <main class="screen" id="screen" tabindex="-1"></main>
+    <div class="dock" id="dock"></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

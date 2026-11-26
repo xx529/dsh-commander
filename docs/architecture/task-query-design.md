@@ -163,7 +163,6 @@ dispatchable = (status === 'draft' || status === 'proposed' || status === 'revie
 | `waitingFor` | string[] | 未满足依赖 id（空则省略） |
 | `blockReason` | string | 仅 `blocked` 输出（截 200 字符） |
 | `acceptanceCount` | number | 当前轮验收条数 |
-| `stale` | boolean | `taskIsStale`（`.../src/host/board/service.ts:54`） |
 | `createdAt` / `updatedAt` | number | 结构化里给 epoch |
 | `ageMinutes` | number | `now - updatedAt`，≥0 |
 | `primarySessionId` | string | 有主会话时 |
@@ -177,7 +176,7 @@ dispatchable = (status === 'draft' || status === 'proposed' || status === 'revie
 Board: total=37, page=21..37 (offset=20 limit=20 hasMore=false nextOffset=null), now=2026-11-23 21:34
 columns: {"proposed":3,"queued":1,"running":2,"blocked":1,"review":5,"done":25}
 pending: {"taskId":"task_x","expiresAt":1764001800000}
-tasks: [{"id":"task_x","title":"…","status":"review","column":"review","priority":"high","workspaceId":"ws-a","workspaceName":"A","version":7,"round":2,"dispatchable":true,"acceptanceCount":2,"stale":false,"age":"42m"}]
+tasks: [{"id":"task_x","title":"…","status":"review","column":"review","priority":"high","workspaceId":"ws-a","workspaceName":"A","version":7,"round":2,"dispatchable":true,"acceptanceCount":2,"age":"42m"}]
 ```
 
 规则：`title` 用 `clipLine` 截 60；`blockReason` 截 200；`age` 用 `formatRelativeTime`；`pending` 为 null 时写 `pending: none`；空结果也要输出前三行并在末行提示「放宽条件或传 includeArchived」。
@@ -304,7 +303,7 @@ sessions: [{"sessionId":"s-1","title":"…","age":"42m","archived":false}]
 | `sessions.ts` | `listSessions({ctx, stores, workspaceRef, filter})` → 解析工作区（含 cwd 前缀归属）→ 复用 `collectWorkspaceSessions` → 排序分页 |
 | `board-columns.ts` | Host 版六列映射（见下） |
 
-- 行投影复用：`taskIsStale`（`board/service.ts:54`）、`dependenciesMet`/`waitingFor`（`tasks/dependencies.ts`）、`clipLine`/`formatRelativeTime`（`rotation/brief.ts`）、`collectWorkspaceDirectory`（`dispatch/candidates.ts:395`）、`collectWorkspaceSessions`（`:198`）、`resolveWorkspaceReference`（`:444`）。
+- 行投影复用：`dependenciesMet`/`waitingFor`（`tasks/dependencies.ts`）、`clipLine`/`formatRelativeTime`（`rotation/brief.ts`）、`collectWorkspaceDirectory`（`dispatch/candidates.ts:395`）、`collectWorkspaceSessions`（`:198`）、`resolveWorkspaceReference`（`:444`）。（`stale` 派生随看板停滞徽标于 2026-11-24 移除。）
 - **根会话判据（D9）**：在 `session-records.ts` 新增单一谓词 `isRootSession(session)` = `!isChild && parentSessionId === undefined && id !== 指挥官会话`；`NormalizedSession` 增加 `parentSessionId?: string`（真实 header 的 `parentSession` 目前只被读取未使用，见 `.../session/session-records.ts:59-80`；flat 兼容形状已有 `parentSessionId`）。该谓词同时用于工具与 HTTP `GET /commander/sessions`，保证「确认卡候选」与「工具结果」一致——口径只此一处，核实后要收窄也只改一处。现有 fake/归一测试需补 `parentSession` 形状。
 - 六列映射：`tsconfig.host.json` 的 `rootDir` 限定 `src/host`，**不能 import client**。按 i18n 双字典的做法：Host 写一份 + drift 测试 `tests/unit/board-columns-drift.test.ts` 同时 import `src/client/board.ts` 与 Host 版，断言 `statuses`/`trash` 一致。
 - 工具注册一次、`when: commanderOnly` 放行；每个 `execute` 仍做 `ensureCommanderScope` 二次校验。

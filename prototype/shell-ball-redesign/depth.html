@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>浮球 3D 材质 · 3 个方向</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./depth.css">
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div>
+        <p class="kicker">DSH COMMANDER · DEPTH STUDY</p>
+        <h1>让球看起来是球 <span class="slash">/</span> 3D 材质</h1>
+        <p class="lede">Siri 的立体感来自：左上高光、右下暗部、一圈定向 rim light、玻璃折射。我们的球现在只有中心蓝光 + 很弱的边缘，所以显得平。下面 60px 球放大 2.6× 看细节。</p>
+      </div>
+      <div class="facts">
+        <div><span>球体</span><b>60 px</b></div>
+        <div><span>窗口</span><b>68 px</b></div>
+        <div><span>光向</span><b>左上</b></div>
+      </div>
+    </header>
+    <section class="grid" aria-label="3D 材质方案">
+      <article class="option">
+      <header class="opt-head"><span class="idx">00</span><h2>现状</h2><span class="tag muted">平面感</span></header>
+      <div class="stage"><div class="win">
+      <div class="ball v-current">
+        <span class="surface"><span class="core"></span><span class="rim"></span></span>
+        
+      </div>
+    </div></div>
+      <p class="desc">中心蓝光 + 暗壳，边缘只有很弱的 inset 光；在 60px 下读起来像一张圆形贴纸。</p>
+    </article><article class="option recommended">
+      <header class="opt-head"><span class="idx">A</span><h2>深空蓝玻璃</h2><span class="tag rec">推荐</span></header>
+      <div class="stage"><div class="win">
+      <div class="ball v-deep v3d">
+        <span class="surface"><span class="core"></span><span class="rim"></span></span>
+        
+      </div>
+    </div></div>
+      <p class="desc">左上强高光、右下暗部、右下定向青色 rim light，加一点玻璃折射；保留 DSH 的深蓝身份。</p>
+    </article><article class="option">
+      <header class="opt-head"><span class="idx">B</span><h2>虹彩玻璃</h2><span class="tag iris">最像 Siri</span></header>
+      <div class="stage"><div class="win">
+      <div class="ball v-iris v3d">
+        <span class="surface"><span class="core"></span><span class="rim"></span></span>
+        
+      </div>
+    </div></div>
+      <p class="desc">蓝绿/紫/粉的低饱和虹彩 + 白色高光 + 薄荷 rim；最接近 Siri 的玻璃体积感，颜色也更跳。</p>
+    </article><article class="option">
+      <header class="opt-head"><span class="idx">C</span><h2>液态金属</h2><span class="tag metal">最硬</span></header>
+      <div class="stage"><div class="win">
+      <div class="ball v-metal v3d">
+        <span class="surface"><span class="core"></span><span class="rim"></span></span>
+        
+      </div>
+    </div></div>
+      <p class="desc">银蓝金属球，高光/暗部对比最强；最“硬”的 3D，但离 Siri 的玻璃质感远一些。</p>
+    </article>
+    </section>
+    <footer class="foot">
+      <p>现状是上线中的材质；A–C 只改球面材质，不动工作环行/完成脉冲的逻辑。实际尺寸 60 px，截图放大 2.6×。</p>
+      <p class="hint">推荐 A：3D 明显，又保留 DSH 的深蓝；想要更像 Siri 就选 B。</p>
+    </footer>
+  </main>
+</body>
+</html>

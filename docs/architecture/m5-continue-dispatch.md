@@ -349,6 +349,8 @@ task 更新：
 
 ## 6. Brief 变更（`src/host/dispatch/brief.ts`）
 
+> **2026-11-26 作废**：本节模板与「同会话只发增量」的自动裁剪全部取消，`brief.ts` 已删除。工作会话首条消息 = `commander_task_dispatch.prompt` 原文，由指挥官自己组织（见 `dispatch-prompt-passthrough.md`）。轮次/历史归档语义不变。
+
 首次派发保持现状：
 
 ```text
