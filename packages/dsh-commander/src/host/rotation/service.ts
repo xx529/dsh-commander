@@ -23,6 +23,7 @@ import type {
   SessionEventLike,
 } from '../dsh-types.ts'
 import type { ConfigRecord, TaskRecord } from '../schema.ts'
+import { migrateCommanderSchedules, scheduleMigrationFailure, type ScheduleMigrationInput, type ScheduleMigrationResult } from '../schedule/migration.ts'
 import { buildHandoffBrief, type BriefUserLine, type HandoffBrief, type HandoffBriefStats } from './brief.ts'
 import { briefWindowStart, resolveRotation, rotationDue, rotationDueAt, type ResolvedRotation } from './config.ts'
 import type { ToolAuditResult } from './tool-audit.ts'
@@ -57,6 +58,8 @@ export interface RotationResult {
   previousSessionId?: string
   startedAt?: number
   brief?: HandoffBriefStats
+  /** 换代后的定时任务跟随迁移结果（失败不阻断换代；无迁移时为 skipped/unavailable）。 */
+  scheduleMigration?: ScheduleMigrationResult
   rotation: RotationView
 }
 
@@ -75,6 +78,7 @@ export interface RotationLogger {
   info?: (...args: unknown[]) => void
   warn?: (...args: unknown[]) => void
   error?: (...args: unknown[]) => void
+  debug?: (...args: unknown[]) => void
 }
 
 type Resolver<T> = T | (() => T | undefined)
@@ -95,6 +99,8 @@ export interface RotationServiceDeps {
   getSessionEvents?: (sessionId: string) => Promise<SessionEventLike[]>
   /** 换代后给新会话预置 dsh-trace-inspect 工具审计（缺省 = 不做；插件缺失时返回 unavailable）。 */
   setToolAudit?: (sessionId: string, enabled: boolean) => Promise<ToolAuditResult>
+  /** 换代提交后把旧 commander 名下的 schedule 迁到新会话（缺省 = 真实迁移；测试可注入）。 */
+  migrateSchedules?: (input: ScheduleMigrationInput) => Promise<ScheduleMigrationResult>
   emit?: (event: string, payload: Record<string, unknown>) => void
   logger?: RotationLogger
   now?: () => number
@@ -353,6 +359,7 @@ export function createRotationService(deps: RotationServiceDeps) {
     // check/beforeDeliver 同时通过门控、换两次任。
     rotating = true
     const startedAt = now()
+    let scheduleMigration: ScheduleMigrationResult | undefined
     try {
       const blocked = await gateReason(force)
       if (blocked !== undefined) throw new RotationError('rotation_busy', blocked)
@@ -371,10 +378,25 @@ export function createRotationService(deps: RotationServiceDeps) {
         generation,
         previousSessionId: config.commander.sessionId,
       })
+      // 提交点已过：定时任务跟随是 post-commit 补偿，失败只告警，绝不回滚已完成的换代。
+      try {
+        const migrate = deps.migrateSchedules ?? migrateCommanderSchedules
+        scheduleMigration = await migrate({
+          ctx: deps.ctx,
+          fromSessionId: config.commander.sessionId,
+          toSessionId: sessionId,
+          isCommanderSession: (candidate) => deps.sessions.list().some((link) => link.sessionId === candidate && link.role === 'commander'),
+          isCurrentCommander: (candidate) => deps.config.get().commander.sessionId === candidate,
+          ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+        })
+      } catch (error: unknown) {
+        scheduleMigration = scheduleMigrationFailure(config.commander.sessionId, sessionId, 'migration_threw')
+        deps.logger?.warn?.(`[commander] rotation schedule migration threw: ${String((error as Error)?.message ?? error)}`)
+      }
       lastError = undefined
       lastFailureAt = 0
       deps.logger?.info?.(
-        `[commander] rotation committed { from: ${config.commander.sessionId || 'none'}, to: ${sessionId}, generation: ${generation}, briefChars: ${brief.stats.chars}, durationMs: ${now() - startedAt}, reason: ${options.reason} }`,
+        `[commander] rotation committed { from: ${config.commander.sessionId || 'none'}, to: ${sessionId}, generation: ${generation}, briefChars: ${brief.stats.chars}, durationMs: ${now() - startedAt}, reason: ${options.reason}, scheduleMigration: ${scheduleMigration?.status ?? 'none'} }`,
       )
       return {
         rotated: true,
@@ -383,6 +405,7 @@ export function createRotationService(deps: RotationServiceDeps) {
         ...(config.commander.sessionId !== '' ? { previousSessionId: config.commander.sessionId } : {}),
         startedAt: now(),
         brief: brief.stats,
+        ...(scheduleMigration !== undefined ? { scheduleMigration } : {}),
         rotation: view(),
       }
     } catch (error) {
@@ -394,7 +417,11 @@ export function createRotationService(deps: RotationServiceDeps) {
       throw error instanceof RotationError ? error : new RotationError('rotation_failed', message.slice(0, 200))
     } finally {
       rotating = false
-      emit({ rotation: view(), formerCommanders: formerCommanders() })
+      emit({
+        rotation: view(),
+        formerCommanders: formerCommanders(),
+        ...(scheduleMigration !== undefined ? { scheduleMigration } : {}),
+      })
     }
   }
 

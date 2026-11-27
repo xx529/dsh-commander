@@ -9,7 +9,7 @@
 import type { HostObservable } from './types'
 import type {
   ApiFailure, ArchiveListResult, ArchiveQuery, BindingRequest, BoardPatchRequest, BoardPatchResult, ChatMessage, ConfigPatch, ConfigView,
-  ConnectionPhase, EntryPosition, JevTestResult, RotationResult, SendResult, SessionListResult, TaskDetailView, TaskView, UiConfig, WorkspacePatch,
+  ConnectionPhase, EntryPosition, JevTestResult, RotationResult, ScheduleMigrationView, SendResult, SessionListResult, TaskDetailView, TaskView, UiConfig, WorkspacePatch,
   WorkspaceView, WriteResult,
 } from './types'
 import {
@@ -37,9 +37,24 @@ const POLL_FAILURES_BEFORE_OFFLINE = 3
 /** Minimum time between two SSE re-attempts from the polling loop. */
 const SSE_RETRY_INTERVAL_MS = 30_000
 
+/** Read a `scheduleMigration.failed` count from an SSE frame without trusting shape. */
+function scheduleMigrationFailureCount(raw: string): number {
+  try {
+    const payload = JSON.parse(raw) as { scheduleMigration?: { failed?: unknown } }
+    const failed = payload.scheduleMigration?.failed
+    return Array.isArray(failed) ? failed.length : 0
+  } catch {
+    return 0
+  }
+}
+
+function scheduleMigrationWarning(count: number): string {
+  return `有 ${count} 条定时任务未能跟随新会话，请到「自动化任务」页处理`
+}
+
 /** Local notice the overlay/settings render (errors and save confirmations). */
 export interface CommanderNotice {
-  kind: 'ok' | 'error'
+  kind: 'ok' | 'warn' | 'error'
   text: string
   code?: string
   /** Set when the notice is a settings-write failure worth surfacing inline. */
@@ -71,7 +86,7 @@ export interface CommanderStore extends HostObservable<CommanderView> {
   send(text: string): Promise<SendResult>
   saveConfig(patch: ConfigPatch): Promise<WriteResult<ConfigView>>
   saveWorkspaces(rows: readonly WorkspacePatch[]): Promise<WriteResult<WorkspaceView[]>>
-  bind(request: BindingRequest): Promise<WriteResult<{ binding?: unknown; commanderStatus?: string }>>
+  bind(request: BindingRequest): Promise<WriteResult<{ binding?: unknown; commanderStatus?: string; scheduleMigration?: ScheduleMigrationView }>>
   loadConfig(): Promise<void>
   /** `POST /commander/jev/test` — server-side probe; never carries the key. */
   testJev(options?: JevTestOptions): Promise<WriteResult<JevTestResult>>
@@ -227,6 +242,13 @@ export function createCommanderStore(options: CommanderStoreOptions = {}): Comma
         next.rotation.generation > previousGeneration
       ) {
         notice('ok', `已换任到第 ${next.rotation.generation} 任`)
+      }
+      // R1 扩展：定时任务跟随失败时，换代/绑定提示后追加一条 warn（不新增表/看板列）。
+      if (name === 'rotation.updated' || name === 'binding.updated') {
+        const failed = scheduleMigrationFailureCount(frame.data)
+        if (failed > 0) {
+          notice('warn', scheduleMigrationWarning(failed))
+        }
       }
       if (name === 'bye') {
         stopStream()
@@ -418,14 +440,16 @@ export function createCommanderStore(options: CommanderStoreOptions = {}): Comma
     return result
   }
 
-  async function bind(request: BindingRequest): Promise<WriteResult<{ binding?: unknown; commanderStatus?: string }>> {
+  async function bind(request: BindingRequest): Promise<WriteResult<{ binding?: unknown; commanderStatus?: string; scheduleMigration?: ScheduleMigrationView }>> {
     const result = await postBinding(baseUrl, request)
     if (result.ok === false) {
       notice('error', result.failure.message, result.failure)
       return result
     }
     await refresh()
-    notice('ok', '指挥官会话已绑定')
+    const failed = result.data.scheduleMigration?.failed.length ?? 0
+    if (failed > 0) notice('warn', `指挥官会话已绑定；${scheduleMigrationWarning(failed)}`)
+    else notice('ok', '指挥官会话已绑定')
     return result
   }
 
@@ -564,7 +588,11 @@ export function createCommanderStore(options: CommanderStoreOptions = {}): Comma
       return result
     }
     await refresh()
-    if (result.data.rotated) notice('ok', `已换任到第 ${result.data.generation ?? ''} 任`)
+    if (result.data.rotated) {
+      const failed = result.data.scheduleMigration?.failed.length ?? 0
+      if (failed > 0) notice('warn', `已换任到第 ${result.data.generation ?? ''} 任；${scheduleMigrationWarning(failed)}`)
+      else notice('ok', `已换任到第 ${result.data.generation ?? ''} 任`)
+    }
     else if (result.data.reason === 'no_activity') notice('ok', '本任没有活动，未换任')
     else notice('ok', '还没到轮换时间')
     return { ok: true, data: result.data as RotationResult }

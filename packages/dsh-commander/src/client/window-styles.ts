@@ -497,6 +497,7 @@ body {
 .dshcn-msg[data-pending="true"] { opacity: 0.7; }
 .dshcn-notice { margin: 0 12px 8px; padding: 7px 9px; border-radius: 7px; font-size: 11.5px; background: var(--assist); color: var(--muted); }
 .dshcn-notice[data-kind="error"] { color: var(--danger); }
+.dshcn-notice[data-kind="warn"] { color: var(--warning, var(--danger)); }
 .dshcn-compose {
   flex: 0 0 auto;
   display: flex; gap: 8px; align-items: flex-end;

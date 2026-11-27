@@ -43,6 +43,7 @@ export const API_PREFIX = '/commander'
 import type { BoardService } from '../board/service.ts'
 import type { TaskActions } from '../tasks/actions.ts'
 import type { FormerCommander, RotationService, RotationView } from '../rotation/service.ts'
+import type { ScheduleMigrationInput, ScheduleMigrationResult } from '../schedule/migration.ts'
 
 export interface ApiDeps {
   ctx: CordisContext
@@ -55,7 +56,11 @@ export interface ApiDeps {
   panelPresence: () => 'present' | 'absent'
   version: string
   now?: () => number
-  logger?: { warn?: (...args: unknown[]) => void }
+  logger?: {
+    info?: (...args: unknown[]) => void
+    warn?: (...args: unknown[]) => void
+    debug?: (...args: unknown[]) => void
+  }
   /** M1：当前 pendingDispatch（快照/dispatch.updated 共用；无则 null）。 */
   getPendingDispatch?: () => unknown
   /** M2：看板人工改动/归档/回收站服务。 */
@@ -88,6 +93,8 @@ export interface ApiDeps {
   rotation?: RotationService
   getRotation?: () => RotationView
   getFormerCommanders?: () => FormerCommander[]
+  /** 换代/绑定后把旧 commander 名下的 schedule 迁到新会话（与 RotationService 共用同一实现）。 */
+  migrateSchedules?: (input: ScheduleMigrationInput) => Promise<ScheduleMigrationResult>
 }
 
 export interface IdempotencyEntry {

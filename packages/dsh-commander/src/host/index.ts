@@ -32,6 +32,7 @@ import { agentSessionIdOf, createCommanderTools } from './tools/index.ts'
 import { createWorkStatusTracker } from './trigger/status.ts'
 import { createRotationService } from './rotation/service.ts'
 import { setSessionToolAudit } from './rotation/tool-audit.ts'
+import { migrateCommanderSchedules } from './schedule/migration.ts'
 import { registerCommanderPromptSection } from './session/prompt.ts'
 import { createShellSupervisor, resolveShellBinary } from './native/supervisor.ts'
 import { createApprovalBridge, type ApprovalBridge } from './native/approval-bridge.ts'
@@ -202,6 +203,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     getPendingDispatch: () => dispatchService.currentPending(),
     hasPendingBoardInjection: () => boardService.pendingMerges() > 0,
     setToolAudit: setToolAuditFor,
+    migrateSchedules: migrateCommanderSchedules,
     emit: (event, payload) => sse.broadcast(event, { ...payload, rev: sse.rev }),
     logger,
   })
@@ -372,6 +374,7 @@ export async function apply(ctx: CordisContext, _config: CommanderPluginConfig =
     rotation,
     getRotation: () => rotation.view(),
     getFormerCommanders: () => rotation.formerCommanders(),
+    migrateSchedules: migrateCommanderSchedules,
     getMetrics: () => injector.metrics,
     windowPage,
     nativeShellStatus: () => shellSupervisor.status().phase,

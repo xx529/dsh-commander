@@ -176,6 +176,7 @@ export const STYLES = `
   border: 1px solid var(--dsw-alias-border-l1);
 }
 .dshc-banner[data-kind='error'] { background: var(--dsw-alias-state-error-secondary); border-color: var(--dsw-alias-state-error-primary); }
+.dshc-banner[data-kind='warn'] { background: var(--dsw-alias-state-warning-secondary, var(--dsw-alias-state-error-secondary)); border-color: var(--dsw-alias-state-warning-primary, var(--dsw-alias-state-error-primary)); }
 .dshc-banner[data-kind='ok'] { background: var(--dsw-alias-state-success-secondary); border-color: var(--dsw-alias-state-success-primary); }
 .dshc-banner-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .dshc-banner-actions { display: flex; gap: 6px; flex: none; }

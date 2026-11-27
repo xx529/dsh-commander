@@ -7,6 +7,9 @@ import type {
   DomainTable,
   HttpRequestLike,
   HttpResponseLike,
+  ScheduleEditRequestLike,
+  ScheduleEntryLike,
+  ScheduleServiceLike,
   SessionControllerService,
   WebServerService,
   WorkspaceRegistryService,
@@ -15,7 +18,12 @@ import type {
 // ---------------------------------------------------------------- FakeCtx
 export interface FakeCtxOptions {
   services?: Record<string, unknown>
-  logger?: { info?: (...args: unknown[]) => void; warn?: (...args: unknown[]) => void; error?: (...args: unknown[]) => void }
+  logger?: {
+    info?: (...args: unknown[]) => void
+    warn?: (...args: unknown[]) => void
+    error?: (...args: unknown[]) => void
+    debug?: (...args: unknown[]) => void
+  }
 }
 
 export interface FakeCtx extends CordisContext {
@@ -485,4 +493,57 @@ export function createFakeAgents(): FakeAgents {
     },
   }
   return registry
+}
+
+// ---------------------------------------------------------------- FakeSchedule
+export interface FakeScheduleEntry {
+  id: string
+  status: 'active' | 'paused' | 'ended'
+  updatedAt?: string
+  target:
+    | { kind: 'session'; sessionId: string }
+    | { kind: 'new_once'; sessionId: string }
+    | { kind: 'new' }
+}
+
+export interface FakeScheduleService {
+  entries: Map<string, FakeScheduleEntry>
+  catalogCalls: number
+  viewCalls: number
+  edits: Array<{ request: ScheduleEditRequestLike; actor?: string }>
+  service: ScheduleServiceLike
+}
+
+/** 契约型 schedule fake：catalog 全量、edit CAS、只改 target、状态保持、updatedAt 递增。 */
+export function createFakeSchedule(seed: readonly FakeScheduleEntry[]): FakeScheduleService {
+  const entries = new Map(seed.map((item) => [item.id, structuredClone(item)]))
+  const fake: FakeScheduleService = {
+    entries,
+    catalogCalls: 0,
+    viewCalls: 0,
+    edits: [],
+    service: {
+      async catalog(): Promise<readonly ScheduleEntryLike[]> {
+        fake.catalogCalls += 1
+        return [...entries.values()].map((item) => structuredClone(item))
+      },
+      async view(request: { id: string }): Promise<unknown> {
+        fake.viewCalls += 1
+        const current = entries.get(request.id)
+        return current === undefined ? { id: request.id, code: 'schedule_not_found' } : structuredClone(current)
+      },
+      async edit(request: ScheduleEditRequestLike, actor?: string): Promise<unknown> {
+        fake.edits.push({ request: structuredClone(request), ...(actor !== undefined ? { actor } : {}) })
+        const current = entries.get(request.id)
+        if (current === undefined) return { id: request.id, code: 'schedule_not_found' }
+        if (request.expectedUpdatedAt !== undefined && request.expectedUpdatedAt !== (current.updatedAt ?? null)) {
+          return { id: request.id, code: 'schedule_conflict' }
+        }
+        current.target = structuredClone(request.patch.target)
+        current.updatedAt = `edited-${fake.edits.length}`
+        return structuredClone(current)
+      },
+    },
+  }
+  return fake
 }

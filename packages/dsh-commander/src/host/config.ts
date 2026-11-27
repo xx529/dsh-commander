@@ -191,5 +191,7 @@ export const ROTATION_AGENT_RETRY_COUNT = 3
 export const ROTATION_AGENT_RETRY_DELAY_MS = 50
 /** 单次轮换超时（超过按失败处理；不阻塞旧绑定）。 */
 export const ROTATION_TIMEOUT_MS = 10_000
+/** 换代/绑定后定时任务跟随迁移的总超时（本地存储写；超时按 partial/timeout，不阻断绑定）。 */
+export const SCHEDULE_MIGRATION_TIMEOUT_MS = 3_000
 /** 退役指挥官在快照里的展示上限。 */
 export const FORMER_COMMANDERS_MAX = 10

@@ -8,7 +8,12 @@ export interface CordisContext {
   effect(fn: () => void | (() => void)): DisposableLike
   /** Cordis 注入：等服务就绪再执行（可选；旧宿主可能没有）。 */
   inject?(names: string[], callback: (scoped: CordisContext) => void): DisposableLike | void
-  logger?: { info?: (...args: unknown[]) => void; warn?: (...args: unknown[]) => void; error?: (...args: unknown[]) => void }
+  logger?: {
+    info?: (...args: unknown[]) => void
+    warn?: (...args: unknown[]) => void
+    error?: (...args: unknown[]) => void
+    debug?: (...args: unknown[]) => void
+  }
 }
 
 export interface DisposableLike {
@@ -141,4 +146,32 @@ export interface CapabilityPanelService {
 
 export interface SessionProjectionsService {
   snapshot?: (session: unknown) => unknown
+}
+
+// ---------------------------------------------------------------- schedule（软依赖）
+// 形状来源：@deepseek-ai/dsh-schedule 0.2.2-rc.2/rc.3 的 Host 服务面（catalog/view/edit）。
+// 不 import 该包：Host 零运行时依赖；只用结构化最小面 + 运行时形状校验。
+
+/** Host schedule 任务的最小只读面（只声明迁移需要的字段）。 */
+export interface ScheduleEntryLike {
+  id: string
+  status?: string
+  updatedAt?: string
+  /** `{kind:'session'|'new_once'|'new', sessionId?, create?}`；运行时按 unknown 校验。 */
+  target?: unknown
+}
+
+/** `edit()` 的 update 请求（只用到改 target + CAS）。 */
+export interface ScheduleEditRequestLike {
+  id: string
+  action: 'update'
+  patch: { target: { kind: 'session'; sessionId: string } }
+  expectedUpdatedAt?: string | null
+}
+
+/** Host schedule 服务的最小面；`view` 可选（缺省时 CAS 冲突不重试）。 */
+export interface ScheduleServiceLike {
+  catalog(): Promise<readonly ScheduleEntryLike[]>
+  view?(request: { id: string }): Promise<unknown>
+  edit(request: ScheduleEditRequestLike, actorSessionId?: string): Promise<unknown>
 }

@@ -14,6 +14,7 @@ import { capabilitySummary } from '../../dispatch/capability.ts'
 import { resolveJevThresholds } from '../../config.ts'
 import { resolveRotation, patchRotation } from '../../rotation/config.ts'
 import { RotationError } from '../../rotation/service.ts'
+import { migrateCommanderSchedules, scheduleMigrationFailure, type ScheduleMigrationResult } from '../../schedule/migration.ts'
 import { collectWorkspaceSessions } from '../../dispatch/candidates.ts'
 import { isSessionLive, readSessionsByIds } from '../../session/session-records.ts'
 import { dependenciesMet, hasPendingDependents, isReady, waitingFor } from '../../tasks/dependencies.ts'
@@ -486,12 +487,46 @@ export async function handleWorkspacesPut(deps: ApiDeps, body: unknown): Promise
 
 export async function handleBindingPost(deps: ApiDeps, body: unknown): Promise<JsonResult> {
   const parsed = validateBindingBody(body)
+  // 绑定前快照旧 commander：迁移只认「本次被替换掉的那个会话」，不碰其它 commander/工作会话。
+  const fromSessionId = deps.binding.getConfig().commander.sessionId
   try {
     const view = parsed.mode === 'new'
       ? await deps.binding.bindNew({ ...(parsed.workspaceId !== undefined ? { workspaceId: parsed.workspaceId } : {}), ...(parsed.cwd !== undefined ? { cwd: parsed.cwd } : {}), ...(parsed.agentPreset !== undefined ? { agentPreset: parsed.agentPreset } : {}) })
       : await deps.binding.bindSelect({ ...(parsed.workspaceId !== undefined ? { workspaceId: parsed.workspaceId } : {}), sessionId: parsed.sessionId })
-    deps.sse.broadcast('binding.updated', { binding: view.binding, commanderStatus: view.status, rev: deps.sse.rev })
-    return { status: 200, body: { ok: true, binding: view.binding, commanderStatus: view.status, rev: deps.sse.rev } }
+    let scheduleMigration: ScheduleMigrationResult | undefined
+    if (fromSessionId !== '' && fromSessionId !== view.binding.sessionId) {
+      // 绑定已成功：迁移是 post-commit 补偿，失败只告警，不回滚绑定。
+      try {
+        const migrate = deps.migrateSchedules ?? migrateCommanderSchedules
+        scheduleMigration = await migrate({
+          ctx: deps.ctx,
+          fromSessionId,
+          toSessionId: view.binding.sessionId,
+          isCommanderSession: (candidate) => deps.stores.sessions.list().some((link) => link.sessionId === candidate && link.role === 'commander'),
+          isCurrentCommander: (candidate) => deps.binding.getConfig().commander.sessionId === candidate,
+          ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+        })
+      } catch (error: unknown) {
+        scheduleMigration = scheduleMigrationFailure(fromSessionId, view.binding.sessionId, 'migration_threw')
+        deps.logger?.warn?.(`[commander] binding schedule migration threw: ${String((error as Error)?.message ?? error)}`)
+      }
+    }
+    deps.sse.broadcast('binding.updated', {
+      binding: view.binding,
+      commanderStatus: view.status,
+      ...(scheduleMigration !== undefined ? { scheduleMigration } : {}),
+      rev: deps.sse.rev,
+    })
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        binding: view.binding,
+        commanderStatus: view.status,
+        ...(scheduleMigration !== undefined ? { scheduleMigration } : {}),
+        rev: deps.sse.rev,
+      },
+    }
   } catch (error) {
     if (error instanceof BindingError) {
       throw new ApiError(error.code as never, error.message)
@@ -623,6 +658,7 @@ export async function handleRotation(deps: ApiDeps, body: unknown): Promise<Json
         ...(result.previousSessionId !== undefined ? { previousSessionId: result.previousSessionId } : {}),
         ...(result.startedAt !== undefined ? { startedAt: result.startedAt } : {}),
         ...(result.brief !== undefined ? { brief: result.brief } : {}),
+        ...(result.scheduleMigration !== undefined ? { scheduleMigration: result.scheduleMigration } : {}),
         rev: deps.sse.rev,
       },
     }

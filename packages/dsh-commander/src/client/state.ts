@@ -13,7 +13,7 @@ import type {
   ArchiveListResult, ArchiveQuery, BoardEditView, BoardPatchRequest, BoardPatchResult, ConfigPatch, ConfigView, ConnectionPhase,
   HttpResult, JevConfig, JevTestResult, PendingDispatchView, SessionListResult, SessionOptionView, TaskDetailView,
   TaskView, EntryPosition, UiConfig, WorkSessionView, WorkspacePatch, WorkspaceView, WriteResult,
-  RotationView, FormerCommander, RotationResult,
+  RotationView, FormerCommander, RotationResult, ScheduleMigrationView,
 } from './types'
 
 /** Maximum number of Host messages the panel keeps in memory (snapshot cap). */
@@ -500,13 +500,13 @@ export async function putWorkspaces(baseUrl: string, workspaces: readonly Worksp
 export async function postBinding(
   baseUrl: string,
   request: { mode: 'new'; workspaceId?: string; cwd?: string; agentPreset?: string } | { mode: 'select'; workspaceId?: string; sessionId: string },
-): Promise<WriteResult<{ binding?: CommanderBinding; commanderStatus?: string; rev?: number }>> {
+): Promise<WriteResult<{ binding?: CommanderBinding; commanderStatus?: string; scheduleMigration?: ScheduleMigrationView; rev?: number }>> {
   const result = await requestJson<Record<string, unknown>>(apiUrl(baseUrl, '/commander/binding'), {
     method: 'POST',
     body: { ...request, requestId: newRequestId('bind') },
   })
   if (!result.ok) return result
-  return { ok: true, data: result.data as { binding?: CommanderBinding; commanderStatus?: string; rev?: number } }
+  return { ok: true, data: result.data as { binding?: CommanderBinding; commanderStatus?: string; scheduleMigration?: ScheduleMigrationView; rev?: number } }
 }
 
 /** Optional probe overrides for `POST /commander/jev/test` (never carries a plaintext key). */

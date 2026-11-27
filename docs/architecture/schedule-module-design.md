@@ -465,6 +465,8 @@ interface ScheduleRun {
 
 ### 7.7 R1 轮换的影响
 
+> **实现注记（2026-11-27）**：旧指挥官会话名下的轻量 target 迁移已落地，见 `docs/architecture/rotation-schedule-migration.md`；本节的 `confirm` 模式完整重指仍待本设计稿实现。
+
 - `direct` 模式：native target 是工作会话，**与指挥官会话无关**，R1 换任不影响。
 - `confirm` 模式：native target 是指挥官会话；R1 换任后必须重指（§5.6-5）。
 - 手动“绑定到新会话”（设置页）同理：confirm 模式要重指；direct 模式不受影响。

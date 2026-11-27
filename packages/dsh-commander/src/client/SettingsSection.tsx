@@ -373,10 +373,18 @@ export function CommanderSettingsSection({ store, t, openSession }: CommanderSet
     setSavingGroup('rotation')
     void store.rotateCommander(true)
       .then((result) => {
+        const migration = result.ok ? result.data.scheduleMigration : undefined
+        const failed = migration?.failed.length ?? 0
+        const migrated = migration?.migrated ?? 0
+        const suffix = failed > 0
+          ? ` · ${t('settings.rotation.scheduleMigrationFailed').replace('{n}', String(failed))}`
+          : migrated > 0
+            ? ` · ${t('settings.rotation.scheduleMigrated').replace('{n}', String(migrated))}`
+            : ''
         setResults(current => ({
           ...current,
           rotation: result.ok
-            ? { kind: 'ok', text: t('settings.rotation.rotated') }
+            ? { kind: failed > 0 ? 'error' : 'ok', text: `${t('settings.rotation.rotated')}${suffix}` }
             : { kind: 'error', text: `${t('settings.save.failed')}：${result.failure.code} · ${result.failure.message}` },
         }))
       })

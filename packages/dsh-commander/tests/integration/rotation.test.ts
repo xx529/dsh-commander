@@ -10,6 +10,7 @@ import type { TaskRecord } from '../../src/host/schema.ts'
 import {
   createFakeAgents,
   createFakeCtx,
+  createFakeSchedule,
   createFakeSessionController,
   createFakeStorageDomain,
   createFakeWebServer,
@@ -50,6 +51,8 @@ interface SetupOptions {
   events?: Array<Record<string, unknown>>
   /** 假 sessions.get 返回的 cwd；用于 bindSelect 的工作区归属推断。 */
   sessionCwd?: string
+  /** 可选 schedule fake；不传则 ctx.get('schedule') 为空（迁移 unavailable）。 */
+  schedule?: unknown
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -73,6 +76,7 @@ async function setup(options: SetupOptions = {}) {
           }
         },
       },
+      ...(options.schedule !== undefined ? { schedule: options.schedule } : {}),
     },
   })
   await apply(ctx)
@@ -579,4 +583,147 @@ test('rotation: 简报窗口至少覆盖一个周期（刚启用/刚换任也不
   assert.match(text, /本周期任务（1 条）：/)
   // 页脚不再引导去打开旧任会话
   assert.doesNotMatch(text, /打开第 1 任会话/)
+})
+
+// ---------------------------------------------------------------- R1 schedule 跟随迁移
+test('rotation: 手动换代迁移旧 commander 名下 active/paused/ended，其他会话完全不变', async () => {
+  const other = {
+    id: 'other-task',
+    status: 'active' as const,
+    updatedAt: 'u-other',
+    target: { kind: 'session' as const, sessionId: 'session-other' },
+  }
+  const beforeOther = structuredClone(other)
+  const schedule = createFakeSchedule([
+    { id: 'old-active', status: 'active', updatedAt: 'u-a', target: { kind: 'session', sessionId: 'session-old' } },
+    { id: 'old-paused', status: 'paused', updatedAt: 'u-p', target: { kind: 'session', sessionId: 'session-old' } },
+    { id: 'old-ended', status: 'ended', updatedAt: 'u-e', target: { kind: 'session', sessionId: 'session-old' } },
+    other,
+    { id: 'new-target', status: 'active', updatedAt: 'u-n', target: { kind: 'new' } },
+    { id: 'new-once', status: 'active', updatedAt: 'u-o', target: { kind: 'new_once', sessionId: 'session-reserved' } },
+  ])
+  const host = await setup({ schedule: schedule.service })
+  await seedBound(host)
+  await enableForActivity(host)
+  host.controller.nextSessionId = 'session-new-sched'
+  host.agents.add('session-new-sched')
+
+  const response = await host.webServer.invoke('POST', '/commander/rotation', { requestId: 'req_rot_sched_1', force: true })
+  assert.equal(response.status, 200)
+  const body = response.body as {
+    rotated: boolean
+    sessionId: string
+    scheduleMigration: { status: string; matched: number; migrated: number; failed: unknown[] }
+  }
+  assert.equal(body.rotated, true)
+  assert.equal(body.sessionId, 'session-new-sched')
+  assert.equal(body.scheduleMigration.status, 'ok')
+  assert.equal(body.scheduleMigration.matched, 3)
+  assert.equal(body.scheduleMigration.migrated, 3)
+  assert.equal(body.scheduleMigration.failed.length, 0)
+
+  for (const id of ['old-active', 'old-paused', 'old-ended']) {
+    assert.deepEqual(schedule.entries.get(id)?.target, { kind: 'session', sessionId: 'session-new-sched' })
+  }
+  assert.equal(schedule.entries.get('old-active')?.status, 'active')
+  assert.equal(schedule.entries.get('old-paused')?.status, 'paused')
+  assert.equal(schedule.entries.get('old-ended')?.status, 'ended')
+  // 反例：别的会话任务必须连 updatedAt 都不变
+  assert.deepEqual(schedule.entries.get('other-task'), beforeOther)
+  assert.deepEqual(schedule.entries.get('new-target')?.target, { kind: 'new' })
+  assert.deepEqual(schedule.entries.get('new-once')?.target, { kind: 'new_once', sessionId: 'session-reserved' })
+  assert.equal(schedule.edits.length, 3)
+})
+
+test('rotation: turn/end 自动换代也迁移旧 commander 的定时任务', async () => {
+  const schedule = createFakeSchedule([
+    { id: 'old-active', status: 'active', updatedAt: 'u-a', target: { kind: 'session', sessionId: 'session-old' } },
+  ])
+  const host = await setup({ schedule: schedule.service })
+  await seedBound(host)
+  await enableForActivity(host)
+  host.controller.nextSessionId = 'session-turn-sched'
+  host.agents.add('session-turn-sched')
+
+  host.ctx.emit('session/event', { id: 'session-old' }, { type: 'turn/end', data: { turn: 2, reason: 'completed' } })
+  await sleep(80)
+
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-turn-sched')
+  assert.deepEqual(schedule.entries.get('old-active')?.target, { kind: 'session', sessionId: 'session-turn-sched' })
+})
+
+test('rotation: 投递前兜底换代也迁移旧 commander 的定时任务', async () => {
+  const schedule = createFakeSchedule([
+    { id: 'old-active', status: 'active', updatedAt: 'u-a', target: { kind: 'session', sessionId: 'session-old' } },
+  ])
+  const host = await setup({ schedule: schedule.service })
+  await seedBound(host)
+  await enableForActivity(host)
+  host.controller.nextSessionId = 'session-before-deliver-sched'
+  host.agents.add('session-before-deliver-sched')
+
+  const response = await host.webServer.invoke('POST', '/commander/message', { text: '到点了吗', requestId: 'req_before_sched' })
+  assert.equal(response.status, 200)
+  assert.equal((response.body as { sessionId: string }).sessionId, 'session-before-deliver-sched')
+  assert.deepEqual(schedule.entries.get('old-active')?.target, { kind: 'session', sessionId: 'session-before-deliver-sched' })
+})
+
+test('rotation: bindNew 手动绑定到新会话也迁移旧 commander 的定时任务', async () => {
+  const schedule = createFakeSchedule([
+    { id: 'old-active', status: 'active', updatedAt: 'u-a', target: { kind: 'session', sessionId: 'session-old' } },
+  ])
+  const host = await setup({ schedule: schedule.service })
+  await seedBound(host)
+  host.controller.nextSessionId = 'session-bind-sched'
+  host.agents.add('session-bind-sched')
+
+  const response = await host.webServer.invoke('POST', '/commander/binding', { mode: 'new', workspaceId: 'ws-a' })
+  assert.equal(response.status, 200)
+  const body = response.body as { scheduleMigration: { migrated: number } }
+  assert.equal(body.scheduleMigration.migrated, 1)
+  assert.deepEqual(schedule.entries.get('old-active')?.target, { kind: 'session', sessionId: 'session-bind-sched' })
+})
+
+test('rotation: bindSelect 手动重绑定也迁移旧 commander 的定时任务', async () => {
+  const schedule = createFakeSchedule([
+    { id: 'old-active', status: 'active', updatedAt: 'u-a', target: { kind: 'session', sessionId: 'session-old' } },
+  ])
+  const host = await setup({ sessionCwd: '/tmp/a', schedule: schedule.service })
+  await seedBound(host)
+
+  const response = await host.webServer.invoke('POST', '/commander/binding', {
+    mode: 'select',
+    workspaceId: 'ws-a',
+    sessionId: 'session-existing',
+  })
+  assert.equal(response.status, 200)
+  const body = response.body as { scheduleMigration: { migrated: number } }
+  assert.equal(body.scheduleMigration.migrated, 1)
+  assert.deepEqual(schedule.entries.get('old-active')?.target, { kind: 'session', sessionId: 'session-existing' })
+})
+
+test('rotation: 定时任务迁移失败不阻断换代；旧 target 保持、失败计数可见', async () => {
+  const schedule = createFakeSchedule([
+    { id: 'old-active', status: 'active', updatedAt: 'u-a', target: { kind: 'session', sessionId: 'session-old' } },
+  ])
+  schedule.service.edit = async () => {
+    throw Object.assign(new Error('edit boom'), { code: 'edit_broke' })
+  }
+  const host = await setup({ schedule: schedule.service })
+  await seedBound(host)
+  await enableForActivity(host)
+  host.controller.nextSessionId = 'session-fail-sched'
+  host.agents.add('session-fail-sched')
+
+  const response = await host.webServer.invoke('POST', '/commander/rotation', { requestId: 'req_rot_sched_fail', force: true })
+  assert.equal(response.status, 200)
+  const body = response.body as {
+    rotated: boolean
+    scheduleMigration: { status: string; failed: Array<{ code: string }> }
+  }
+  assert.equal(body.rotated, true)
+  assert.equal(body.scheduleMigration.status, 'failed')
+  assert.deepEqual(body.scheduleMigration.failed.map((item) => item.code), ['edit_broke'])
+  assert.equal(host.stores.config.get().commander.sessionId, 'session-fail-sched')
+  assert.deepEqual(schedule.entries.get('old-active')?.target, { kind: 'session', sessionId: 'session-old' })
 })

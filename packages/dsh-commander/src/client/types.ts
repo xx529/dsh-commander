@@ -322,6 +322,27 @@ export interface RotationView {
   lastError?: { code: string; message: string; at: number }
 }
 
+/** R1: scheduled-task follow result (`scheduleMigration` on rotation/binding responses and SSE). */
+export interface ScheduleMigrationView {
+  status: 'ok' | 'partial' | 'failed' | 'skipped' | 'unavailable' | 'timeout'
+  fromSessionId: string
+  toSessionId: string
+  scanned: number
+  matched: number
+  migrated: number
+  skipped: {
+    ended: number
+    gone: number
+    changed: number
+    notCommander: number
+    staleBinding: number
+    guardError: number
+    malformed: number
+  }
+  failed: Array<{ id: string; code: string }>
+  durationMs: number
+}
+
 /** R1: `POST /commander/rotation` response. */
 export interface RotationResult {
   rotated: boolean
@@ -331,6 +352,7 @@ export interface RotationResult {
   previousSessionId?: string
   startedAt?: number
   brief?: { chars: number; tasks: number; unfinished: number; userLines: number; truncated?: boolean }
+  scheduleMigration?: ScheduleMigrationView
   rotation?: RotationView
 }
 
