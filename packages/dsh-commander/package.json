@@ -1,6 +1,6 @@
 {
   "name": "dsh-commander",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "description": "Commander plugin for DeepSeek Harness: dispatch tasks to workspaces and sessions from a commander conversation.",

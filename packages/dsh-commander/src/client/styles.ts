@@ -520,7 +520,10 @@ export const STYLES = `
 }
 .dshc-board-card-meta { display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; gap: 6px; font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
 .dshc-board-card-workspace { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dshc-board-priority { padding: 0 6px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l2); }
+.dshc-board-priority {
+  flex: none; white-space: nowrap; padding: 0 6px; border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l2);
+}
 .dshc-board-priority[data-priority='high'] { color: var(--dsw-alias-state-warn-primary); }
 .dshc-board-priority[data-priority='urgent'] { color: var(--dsw-alias-state-error-primary); }
 .dshc-board-priority[data-priority='low'] { color: var(--dsw-alias-label-quaternary); }

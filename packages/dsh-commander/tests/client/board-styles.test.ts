@@ -37,6 +37,31 @@ test('ready dependency edges stay visible on the board background', () => {
   assert.match(ready, /stroke-dasharray:\s*\d+(\.\d+)? \d+(\.\d+)?;/u)
 })
 
+/**
+ * 卡片 meta 行（2026-11-28 用户反馈截图：优先级「普通」被拆成两行）。
+ *
+ * `.dshc-board-card-meta` 是 `flex-wrap: nowrap`，但 CJK 文本的最小内容宽度只有一个字宽，
+ * 徽章没有 `white-space: nowrap` 时会被 flex 压缩到一字一行；同时要 `flex: none`
+ * 避免被 workspace 的长名字挤压。列被拖窄时应当由 workspace 省略号让位，不是徽章换行。
+ */
+test('board card meta badges never wrap their label', () => {
+  const priority = block(STYLES, '.dshc-board-priority')
+  assert.match(priority, /white-space:\s*nowrap;/u)
+  assert.match(priority, /flex:\s*none;/u)
+
+  const round = block(STYLES, '.dshc-board-round')
+  assert.match(round, /white-space:\s*nowrap;/u)
+
+  const downstream = block(STYLES, '.dshc-board-downstream')
+  assert.match(downstream, /white-space:\s*nowrap;/u)
+
+  // meta 行本身必须能收缩：workspace 靠省略号让位，否则徽章会被挤出卡片。
+  const meta = block(STYLES, '.dshc-board-card-meta')
+  assert.match(meta, /min-width:\s*0;/u)
+  const workspace = block(STYLES, '.dshc-board-card-workspace')
+  assert.match(workspace, /text-overflow:\s*ellipsis;/u)
+})
+
 test('waiting dependency edges keep the amber dashed + casing treatment', () => {
   const waiting = block(STYLES, ".dshc-dep-edge[data-state='waiting']")
   assert.match(waiting, /stroke:\s*var\(--dsw-alias-state-warn-primary\);/u)
