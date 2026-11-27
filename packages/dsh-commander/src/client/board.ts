@@ -692,24 +692,15 @@ export interface BoardCardBox {
   bottom: number
 }
 
-/** 端点离卡片转角的内缩：卡片圆角 10px，取 12px 让箭头落在直边上而不是圆角上。 */
-const DEP_EDGE_CORNER_INSET = 12
-
-/** 把端点位置夹在卡片的某条边上，避开转角；盒子过小时退化为边中点。 */
-function clampToSide(value: number, lo: number, hi: number): number {
-  const inset = Math.min(DEP_EDGE_CORNER_INSET, (hi - lo) / 2)
-  return Math.min(hi - inset, Math.max(lo + inset, value))
-}
-
 function formatPathPoint(value: number): string {
   return String(Math.round(value * 10) / 10)
 }
 
 /**
- * 依赖连线的路径：两卡之间取**最近的一对边**进出——
- * 纵排（同一列，x 区间重叠）时连上卡的底边与下卡的顶边，跨列时连左右相对的两条竖边；
- * 端点在该边上朝另一张卡的中心投影（按转角内缩夹住），不再一律钉在边的正中，
- * 所以上下错开的两张卡会从相近的两个角出发，曲线更短、也不会绕到卡片外侧。
+ * 依赖连线的路径：两卡之间取**最近的一对边**进出，两端都钉在该边的**中点**——
+ * 纵排（同一列，x 区间重叠）时连下卡的顶边中点与上卡的底边中点，跨列时连左右相对两条竖边的中点。
+ * 中点锚定让「同一张卡的多条连线」共用一个进出点：不会从卡片角落出发，
+ * 也不会出现同一个目标卡上三个箭头落在三个高度的乱线。投影/转角内缩已废弃。
  */
 export function dependencyEdgePath(from: BoardCardBox, to: BoardCardBox): string {
   const fromMidX = (from.left + from.right) / 2
@@ -719,8 +710,8 @@ export function dependencyEdgePath(from: BoardCardBox, to: BoardCardBox): string
   const sameColumn = Math.min(from.right, to.right) > Math.max(from.left, to.left)
   if (sameColumn) {
     const downward = toMidY >= fromMidY
-    const sx = clampToSide(toMidX, from.left, from.right)
-    const tx = clampToSide(fromMidX, to.left, to.right)
+    const sx = fromMidX
+    const tx = toMidX
     const sy = downward ? from.bottom : from.top
     const ty = downward ? to.top : to.bottom
     const control = Math.max(10, Math.abs(ty - sy) * 0.42) * (downward ? 1 : -1)
@@ -729,8 +720,8 @@ export function dependencyEdgePath(from: BoardCardBox, to: BoardCardBox): string
   const rightward = toMidX >= fromMidX
   const sx = rightward ? from.right : from.left
   const tx = rightward ? to.left : to.right
-  const sy = clampToSide(toMidY, from.top, from.bottom)
-  const ty = clampToSide(fromMidY, to.top, to.bottom)
+  const sy = fromMidY
+  const ty = toMidY
   const control = Math.max(30, Math.abs(tx - sx) * 0.42) * (rightward ? 1 : -1)
   return `M ${formatPathPoint(sx)} ${formatPathPoint(sy)} C ${formatPathPoint(sx + control)} ${formatPathPoint(sy)}, ${formatPathPoint(tx - control)} ${formatPathPoint(ty)}, ${formatPathPoint(tx)} ${formatPathPoint(ty)}`
 }

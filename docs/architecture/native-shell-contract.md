@@ -1,6 +1,6 @@
 # 原生壳浮窗契约（M4 / macOS 先行）
 
-> 版本：v0.5（2026-11-26）　状态：实现契约（P1 骨架；v0.2 球常驻 + 独立面板窗口；v0.3 Lite 状态气泡窗；v0.4 液态金属球 / 金属气泡 / 银白 working 卫星 / 快捷输入 / 悬停高亮 / 未读脉冲；v0.5 气泡展示当前活动：工具 description / assistant 文本）
+> 版本：v0.6（2026-11-27）　状态：实现契约（P1 骨架；v0.2 球常驻 + 独立面板窗口；v0.3 Lite 状态气泡窗；v0.4 液态金属球 / 金属气泡 / 银白 working 卫星 / 快捷输入 / 悬停高亮 / 未读脉冲；v0.5 气泡展示当前活动：工具 description / assistant 文本；v0.6 气泡多行：336×124、最多 5 行、贴屏幕下方时向上长、输入框优先）
 > 上游需求：`docs/PRODUCT-DESIGN.md` §18 M4「原生壳、系统级悬浮、全局热键 → 任意应用可见」
 > 技术依据：`research/notes/float-tech.md` §5.2；`research/notes/dsh-capabilities.md` §1.4
 > 本文只描述**原生壳**这一层；`/commander/*` 既有数据面契约仍以 `docs/architecture/implementation-plan.md` §8 为准。
@@ -15,7 +15,7 @@
 |---|---|---|
 | 独立于 DSH 窗口的悬浮球（无边框、透明、置顶、无 Dock） | ✅ | — |
 | 点击打开/收起指挥面板（球 76×76 窗口（球 60，四周 8px 透明边）常驻 + 独立面板窗口 420×660） | ✅ | — |
-| 状态气泡（working：当前工具 description / assistant 文本，缺省回退「正在思考」；完成：已完成·点击球查看，独立 click-through 窗 336×76） | ✅ | — |
+| 状态气泡（working：当前工具 description / assistant 文本，缺省回退「正在思考」；完成：已完成·点击球查看，独立 click-through 窗 336×124，最多 5 行） | ✅ | — |
 | 全局热键（默认 Option+Space，Carbon） | ✅ | — |
 | 位置持久化 + 多屏 clamp | ✅ | — |
 | 复用 `/commander/*` 数据面（快照、SSE、发消息） | ✅ | — |
@@ -112,14 +112,14 @@ Host → 壳：
 
 ## 4. 窗口行为
 
-| 项 | P1 实现（v0.5 三窗口：球 76×76 / 面板 420×660 / 气泡 336×76） |
+| 项 | P1 实现（v0.6 三窗口：球 76×76 / 面板 420×660 / 气泡 336×124） |
 |---|---|
-| 窗口 | 球窗口 `main`（透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、76×76）；面板窗口 `panel`（透明、无边框、`skip_taskbar`、`resizable: true`、默认 `visible: false`，展开时 `always_on_top: false`）；气泡窗口 `bubble`（336×76、透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、默认 `visible: false`） |
+| 窗口 | 球窗口 `main`（透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、76×76）；面板窗口 `panel`（透明、无边框、`skip_taskbar`、`resizable: true`、默认 `visible: false`，展开时 `always_on_top: false`）；气泡窗口 `bubble`（336×124、透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、默认 `visible: false`） |
 | 激活策略 | macOS `Accessory`（无 Dock 图标、不抢焦点）；气泡窗 `set_ignore_cursor_events(true)`，点击穿透 |
 | 悬浮球 | 76×76 窗口、60px 圆形（8px 透明边），**液态金属**：银蓝 chrome conic + 左上白色高光 + 近黑底部 + 银色定向 rim；不透明、无 backdrop；边缘 `mask 86/94` + `blur 2px` rim 光带，不再有 1px 白边；42px 冷核；无中心符号、无右下连接点；working 时**银白卫星**沿球缘环行（4.6s）；显示可操作数徽标；**面板打开时仍然常驻可见**，点击切换面板打开/收起。完成气泡收起后进入未读态：绿色脉冲核心 + 双层绿色声呐，直到点击浮球/打开面板清除。 |
 | 悬停高亮 | 原生每 80ms 在主线程读 `NSEvent.mouseLocation` 与球窗 `NSWindow.frame`，光标进入/离开球圆时发 `commander:ball-hover`（球页 + 气泡页）；球页面加 `is-hover`，气泡页用于「空输入 + 离开球」收起。不依赖窗口焦点，也不需要先点一下。 |
-| 快捷输入 | 光标在球内停留 0.8s → 复用 bubble 窗（336×76）：`set_ignore_cursor_events(false)`、show、set_focus，页面从状态气泡切到输入；与状态气泡同一套**烟熏铬玻璃**（银色描边、顶部金属反光、镀铬 `>` 与发送键）；输入条只有「> / 输入 / 发送」，无 placeholder、无关闭按钮；Enter 发送、Esc 收起；空输入时光标离开球自动收起，有内容则保留；发送走既有 `POST /commander/message`；收起后状态气泡恢复；光标离开球后才重新武装，避免原地反复弹；面板打开时关闭。 |
-| 状态气泡 | 监听 `commanderBusy` + `commanderActivity`：working 时气泡为**烟熏铬玻璃**（银色描边、顶部金属反光），显示**当前活动文案**——`tool/call` 参数含非空 `description` 时显示该值（没有则跳过、保留上一条），工具调用之间的 `assistant/message` 文本也显示；文案单行化，超过 40 字符补 `...`，CSS ellipsis 再兜住像素宽度；无活动时回退「正在思考」，**无 spinner**；success 才有绿色检查/绿色呼吸，球上是银白卫星环行；busy 结束显示「已完成 · 点击球查看」+ 绿色呼吸，约 5s 后文案收起，浮球转为未读绿色脉冲核心 + 双层声呐，直到用户点击浮球/打开面板（`commander:mode` true）确认。新回合 busy 时重置；连接短暂抖动不清掉已完成的未读，只有点击浮球/打开面板才 ack。面板打开时若已完成则直接确认、不再提醒。不改消息通道（`commander.message` 仍只发 assistant 文本），活动只作为 `commander.status` 的加法字段。球在右侧时气泡在左、在左侧时翻到右；与球心垂直对齐；拖球时跟随；气泡窗阴影收在 12px 内边距。 |
+| 快捷输入 | 光标在球内停留 0.8s → 复用 bubble 窗（336×124）：`set_ignore_cursor_events(false)`、show、set_focus，页面从状态气泡切到输入；与状态气泡同一套**烟熏铬玻璃**（银色描边、顶部金属反光、镀铬 `>` 与发送键）；输入条只有「> / 输入 / 发送」，无 placeholder、无关闭按钮；Enter 发送、Esc 收起；空输入时光标离开球自动收起，有内容则保留；发送走既有 `POST /commander/message`；收起后状态气泡恢复；光标离开球后才重新武装，避免原地反复弹；面板打开时关闭。 |
+| 状态气泡 | 监听 `commanderBusy` + `commanderActivity`：working 时气泡为**烟熏铬玻璃**（银色描边、顶部金属反光），显示**当前活动文案**——`tool/call` 参数含非空 `description` 时显示该值（没有则跳过、保留上一条），工具调用之间的 `assistant/message` 文本也显示；文案自然换行、**最多 5 行**（`line-clamp: 5`，行高 16.2 px），第 5 行尾部省略；宽度按内容取 `min(312, 文本宽 + 内边距)`，高度按行数取 `44 → 99`；无活动时回退「正在思考」，**无 spinner**；success 才有绿色检查/绿色呼吸，球上是银白卫星环行；busy 结束时气泡显示**最后一轮 assistant 回复**（同样最多 5 行、超出截断），外框保留绿色打勾 + 绿色呼吸表示「这是回复、不是工作过程」，取不到回复时才回退「已完成 · 点击球查看」；约 5s 后文案收起，浮球转为未读绿色脉冲核心 + 双层声呐，直到用户点击浮球/打开面板（`commander:mode` true）确认。新回合 busy 时重置；连接短暂抖动不清掉已完成的未读，只有点击浮球/打开面板才 ack。面板打开时若已完成则直接确认、不再提醒。不改消息通道（`commander.message` 仍只发 assistant 文本），活动只作为 `commander.status` 的加法字段。球在右侧时气泡在左、在左侧时翻到右；拖球时跟随；气泡窗阴影收在 12px 内边距。**锚定**：球在屏幕上半区时气泡顶边与球窗顶对齐（`y = ball.y`）、只向下长；球在屏幕下半区（`ball.y + 124 + 8 > 屏幕底`）时翻成底边对齐（`y = ball.y + 56 - 124`）、只向上长；两种锚定下尾巴都固定在球心高度（距 pill 顶/底 22 px），不随高度移动。**动效**：pill 常驻，文案切换 160 ms 等时长线性交叉（单行）/ 先出后进 240 ms（多行，避免两段多行叠字）；高度 210 ms `cubic-bezier(.2,.9,.3,1)`。**窗口显隐**：入场 180 ms 弹入、退场 150 ms 淡出，退场动画结束后才 `set_bubble(false)`，不再瞬时硬切。**输入框优先**：快捷输入打开时气泡先退 100 ms、输入框 100 ms 后入场，两者不叠加；输入框收起后气泡才恢复。 |
 | 面板 | 420×660（看板 980×700 级别按屏幕比例）；首次打开居中，用户本次运行内调整过的 frame 记在内存 |
 | 拖动 | 前端 pointer 事件：位移 > 4px 调 `startDragging()`（作用于当前窗口）；拖动后的 click 不切换面板 |
 | 位置 | 球的 x/y 存 `stateDir/window.json`（移动 debounce 300ms 写回）；面板 frame 只在本次运行内存中记录 |
@@ -140,7 +140,7 @@ Host → 壳：
 - 静态资源（`lib/window.js`）由 Host 在 HTML 中内联返回；不额外暴露静态目录。
 - **已知限制（P1）**：`/commander/*` 写接口仍与现状一致，未对窗口页单独鉴权（loopback 信任）；token 只防止任意网页打开窗口页。P2 再评估全局 token。
 - 气泡窗与球窗共用同一套 store / SSE；working 活动来自 `commander.status.activity`，快照 `commanderActivity` 用于重连/首次打开恢复。
-- **v0.5 气泡活动（加法字段，不改既有事件语义）**：Host 在 `tool/call` 时解析 `data.arguments`（JSON 字符串）的顶层 `description`，非空则更新 `activity={text,at}`；为空/缺失/解析失败则跳过。工具调用之间的 `assistant/message` 文本也更新 activity。`turn/start`、`turn/end` 清空。Host 折叠空白并截到 200 字符（补 `...`）；Client 展示前再截到 40 字符。`commander.message` 通道仍只发 assistant 文本，不新增消息类型、不落库。
+- **v0.5 气泡活动（加法字段，不改既有事件语义）**：Host 在 `tool/call` 时解析 `data.arguments`（JSON 字符串）的顶层 `description`，非空则更新 `activity={text,at}`；为空/缺失/解析失败则跳过。工具调用之间的 `assistant/message` 文本也更新 activity。`turn/start`、`turn/end` 清空。Host 折叠空白并截到 200 字符（补 `...`）；Client 展示前再截到 120 字符（约 5 行），超出由 `line-clamp: 5` 兜住。`commander.message` 通道仍只发 assistant 文本，不新增消息类型、不落库。
 
 ### 5.1 气泡窗命令与事件（v0.4；v0.5 增加 SSE `commander.status.activity`）
 
@@ -150,8 +150,9 @@ Host → 壳：
 | 气泡页 → 壳 | `invoke('set_quick_input', { open: boolean })` | 收起/打开快捷输入；打开时气泡窗变为可交互、可聚焦 |
 | 气泡页 → 壳 | `invoke('set_ball_unread', { unread: boolean })` | 5s 文案收起后打开浮球未读绿色脉冲；点击浮球/打开面板时清除 |
 | 壳 → 气泡页 | `emit_to('bubble', 'commander:bubble-side', 'left'\|'right')` | 气泡在球左/右侧翻转；页面据此改尾巴方向 |
+| 壳 → 气泡页 | `emit_to('bubble', 'commander:bubble-anchor', 'top'\|'bottom')` | 气泡贴屏幕上方（顶边对齐、向下长）还是下方（底边对齐、向上长）；页面据此改 pill 对齐与尾巴位置 |
 | 壳 → 球页/气泡页 | `emit_to('main'/'bubble', 'commander:ball-hover', boolean)` | 原生轮询到的球悬停状态；球页 `is-hover`，气泡页空输入离开时收起 |
-| 壳 → 气泡页 | `emit_to('bubble', 'commander:quick-input', boolean)` | 0.8s 停留后切到快捷输入；收起时切回状态气泡 |
+| 壳 → 气泡页 | `emit_to('bubble', 'commander:quick-input', boolean)` | 0.8s 停留后切到快捷输入；收起时切回状态气泡。输入框打开期间气泡不渲染（优先级高于状态气泡） |
 | 壳 → 球页 | `emit_to('main', 'commander:ball-unread', boolean)` | 完成提示收起后的未读脉冲状态 |
 | 壳内部 | `show_bubble` / `position_bubble` / `spawn_hover_watcher` / `show_quick_input` / `close_quick_input` | 贴球定位、翻转、面板打开时隐藏、球移动时跟随、悬停/停留检测、快捷输入聚焦/收起 |
 

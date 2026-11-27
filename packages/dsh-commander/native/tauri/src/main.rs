@@ -36,9 +36,14 @@ const PANEL_LABEL: &str = "panel";
 const PANEL_WIDTH: f64 = 420.0;
 const PANEL_HEIGHT: f64 = 660.0;
 /// 独立气泡窗口：click-through、不抢焦点；只在指挥官忙碌/完成时出现。
+/// 高度按「最多 5 行」预留（pill 100 + 上下 12 内边距），气泡在其中顶/底对齐。
 const BUBBLE_LABEL: &str = "bubble";
 const BUBBLE_WIDTH: f64 = 336.0;
-const BUBBLE_HEIGHT: f64 = 76.0;
+const BUBBLE_HEIGHT: f64 = 124.0;
+/// 气泡窗相对球窗的垂直偏移：球心在球窗内是 38（76 高、球体 60），
+/// pill 1 行中心在气泡窗内是 34（12 内边距 + 44/2）→ 偏移 = 38 - 34 = 4。
+/// 顶锚定：气泡窗顶 = 球窗顶 + 4；底锚定：气泡窗底 = 球窗底 - 4。
+const BUBBLE_BALL_INSET: f64 = 4.0;
 
 // ---------------------------------------------------------------- 环境与状态
 
@@ -495,7 +500,8 @@ fn create_bubble_window(app: &tauri::App, config: &Config) -> tauri::Result<()> 
     Ok(())
 }
 
-/// 在球旁边定位气泡窗：优先放在空间足够的一侧，贴边自动翻转，垂直与球心对齐。
+/// 在球旁边定位气泡窗：左右贴边翻转；垂直方向默认顶边对齐（气泡向下长），
+/// 球贴屏幕下方时翻成底边对齐（气泡向上长），页面据此改 pill 对齐与尾巴位置。
 fn position_bubble(app: &AppHandle) -> Result<(), String> {
     let Some(ball) = app.get_webview_window(BALL_LABEL) else { return Ok(()) };
     let Some(bubble) = app.get_webview_window(BUBBLE_LABEL) else { return Ok(()) };
@@ -513,7 +519,16 @@ fn position_bubble(app: &AppHandle) -> Result<(), String> {
     let prefer_left = ball_pos.x + ball_size.width / 2.0 > mx + mw / 2.0;
     let on_left = if prefer_left { fits_left || !fits_right } else { !fits_right && fits_left };
     let x = if on_left { ball_pos.x - BUBBLE_WIDTH } else { ball_pos.x + ball_size.width };
-    let y = ball_pos.y + (ball_size.height - BUBBLE_HEIGHT) / 2.0;
+    // 垂直锚定：下方放得下就顶边对齐（向下长），放不下且上方放得下就底边对齐（向上长）；
+    // 两边都放不下时仍取顶边对齐，交给 clamp 贴边。
+    let below_space = my + mh - ball_pos.y;
+    let above_space = ball_pos.y + ball_size.height - my;
+    let anchor_top = below_space >= BUBBLE_HEIGHT + margin || above_space < BUBBLE_HEIGHT + margin;
+    let y = if anchor_top {
+        ball_pos.y + BUBBLE_BALL_INSET
+    } else {
+        ball_pos.y + ball_size.height - BUBBLE_HEIGHT - BUBBLE_BALL_INSET
+    };
     let max_x = (mx + mw - BUBBLE_WIDTH - margin).max(mx + margin);
     let max_y = (my + mh - BUBBLE_HEIGHT - margin).max(my + margin);
     let x = x.clamp(mx + margin, max_x);
@@ -522,6 +537,11 @@ fn position_bubble(app: &AppHandle) -> Result<(), String> {
         .set_position(LogicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
     let _ = app.emit_to(BUBBLE_LABEL, "commander:bubble-side", if on_left { "left" } else { "right" });
+    let _ = app.emit_to(
+        BUBBLE_LABEL,
+        "commander:bubble-anchor",
+        if anchor_top { "top" } else { "bottom" },
+    );
     Ok(())
 }
 
@@ -613,28 +633,68 @@ fn show_quick_input(app: &AppHandle) -> Result<(), String> {
 fn close_quick_input(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let was_open = state.quick_open.swap(false, Ordering::SeqCst);
+    write_bubble_state(app, "quick:close");
+    let active = state.bubble_active.load(Ordering::SeqCst);
     if let Some(window) = app.get_webview_window(BUBBLE_LABEL) {
         let _ = window.set_ignore_cursor_events(true);
-        let _ = window.hide();
+        if !active {
+            let _ = window.hide();
+        }
     }
     if was_open {
         let _ = app.emit_to(BUBBLE_LABEL, "commander:quick-input", false);
     }
+    // 输入框收起后把状态气泡补回来：页面切换是异步的，壳这边兜一下，
+    // 避免「quick_open 关掉但气泡窗没人再 show」导致气泡消失。
+    let _ = show_bubble(app);
     Ok(())
+}
+
+/// 排障：把气泡窗状态落到 state_dir/bubble-state.json（低频写入，用于定位「气泡不显示」）。
+fn write_bubble_state(app: &AppHandle, note: &str) {
+    let state = app.state::<AppState>();
+    let visible = app
+        .get_webview_window(BUBBLE_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis())
+        .unwrap_or(0);
+    let payload = format!(
+        "{{\"note\":\"{}\",\"active\":{},\"ready\":{},\"panel\":{},\"quick\":{},\"hover\":{},\"visible\":{},\"at\":{}}}",
+        note,
+        state.bubble_active.load(Ordering::SeqCst),
+        state.bubble_ready.load(Ordering::SeqCst),
+        state.panel_open.load(Ordering::SeqCst),
+        state.quick_open.load(Ordering::SeqCst),
+        state.ball_hover.load(Ordering::SeqCst),
+        visible,
+        at,
+    );
+    let _ = fs::create_dir_all(&state.config.state_dir);
+    let _ = fs::write(state.config.state_dir.join("bubble-state.json"), payload);
 }
 
 fn show_bubble(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    if !state.bubble_active.load(Ordering::SeqCst)
-        || !state.bubble_ready.load(Ordering::SeqCst)
-        || state.panel_open.load(Ordering::SeqCst)
-    {
+    if !state.bubble_active.load(Ordering::SeqCst) {
+        write_bubble_state(app, "show:inactive");
+        return Ok(());
+    }
+    if !state.bubble_ready.load(Ordering::SeqCst) {
+        write_bubble_state(app, "show:not-ready");
+        return Ok(());
+    }
+    if state.panel_open.load(Ordering::SeqCst) {
+        write_bubble_state(app, "show:panel");
         return Ok(());
     }
     let Some(window) = app.get_webview_window(BUBBLE_LABEL) else { return Ok(()) };
     position_bubble(app)?;
     window.show().map_err(|error| error.to_string())?;
     let _ = window.set_ignore_cursor_events(true);
+    write_bubble_state(app, "show:ok");
     Ok(())
 }
 
@@ -823,6 +883,7 @@ fn set_window_mode(app: &AppHandle, mode: &str) -> Result<(), String> {
         let _ = window.hide();
     }
     state.panel_open.store(expanded, Ordering::SeqCst);
+    write_bubble_state(app, if expanded { "mode:panel" } else { "mode:ball" });
     if let Ok(mut current_mode) = state.current_mode.lock() {
         *current_mode = mode_key;
     };
@@ -988,9 +1049,20 @@ fn spawn_parent_watchdog(app: AppHandle, parent_pid: u32) {
 #[tauri::command]
 fn set_bubble(app: AppHandle, visible: bool) -> Result<(), String> {
     let state = app.state::<AppState>();
+    write_bubble_state(&app, if visible { "set_bubble:true" } else { "set_bubble:false" });
     // 快捷输入打开时由它独占气泡窗；状态气泡的显隐等关闭后再由页面重新驱动。
+    // 光标已经离开球却还标着 quick_open，说明是残留状态（页面没接住/没关）：
+    // 先关掉再显示气泡，避免气泡被永久挡住。
     if state.quick_open.load(Ordering::SeqCst) {
-        return Ok(());
+        if state.ball_hover.load(Ordering::SeqCst) {
+            // 输入框占着窗口（比如刚提交完消息）：只记住意图，等 quick 关闭时再显示，
+            // 否则「working 已经开始、输入框随后关闭」会让气泡永远没人再 show。
+            state.bubble_active.store(visible, Ordering::SeqCst);
+            write_bubble_state(&app, "set_bubble:quick-defer");
+            return Ok(());
+        }
+        write_bubble_state(&app, "set_bubble:quick-stale-close");
+        let _ = close_quick_input(&app);
     }
     state.bubble_active.store(visible, Ordering::SeqCst);
     if visible {

@@ -46,10 +46,16 @@ export const WINDOW_STYLES = `
   position: absolute;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px;
+  padding-top: 8px;
   box-sizing: border-box;
   pointer-events: auto;
+}
+.dshcn-quick[data-anchor="bottom"] {
+  align-items: flex-end;
+  padding-top: 12px;
+  padding-bottom: 8px;
 }
 .dshcn-quick[data-side="left"] { justify-content: flex-end; }
 .dshcn-quick[data-side="right"] { justify-content: flex-start; }
@@ -69,9 +75,7 @@ export const WINDOW_STYLES = `
     var(--dshcn-bubble-bg);
   box-shadow: var(--dshcn-bubble-shadow);
   color: var(--dshcn-bubble-ink);
-  animation: dshcn-bubble-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
-.dshcn-quick[data-side="right"] .dshcn-quick-bar { animation-name: dshcn-bubble-in-right; }
 .dshcn-quick-bar:focus-within { border-color: rgba(190, 225, 255, 0.55); }
 .dshcn-quick[data-error="true"] .dshcn-quick-bar { border-color: rgba(255, 93, 93, 0.5); }
 .dshcn-quick-mark {
@@ -698,7 +702,7 @@ body {
   0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
   40% { opacity: 1; transform: translateY(-1px); }
 }
-/* 气泡窗（role=bubble）：336×76，独立透明窗，click-through。 */
+/* 气泡窗（role=bubble）：336×124，独立透明窗，click-through；内部顶/底锚定。 */
 .dshcn-bubble,
 .dshcn-quick {
   --dshcn-bubble-bg: rgba(232, 240, 248, 0.92);
@@ -711,11 +715,14 @@ body {
   position: absolute;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px;
   box-sizing: border-box;
   pointer-events: none;
 }
+/* 球贴屏幕下方时翻成底边锚定：pill 贴窗口底，只向上长 */
+.dshcn-bubble[data-anchor="bottom"],
+.dshcn-quick[data-anchor="bottom"] { align-items: flex-end; }
 .dshcn-bubble[data-side="left"] { justify-content: flex-end; }
 .dshcn-bubble[data-side="right"] { justify-content: flex-start; }
 
@@ -724,9 +731,11 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
+  width: 312px;
   max-width: 312px;
   min-height: 44px;
   padding: 8px 13px 8px 10px;
+  box-sizing: border-box;
   border: 1px solid var(--dshcn-bubble-line);
   border-radius: 15px;
   background:
@@ -734,9 +743,8 @@ body {
     var(--dshcn-bubble-bg);
   box-shadow: var(--dshcn-bubble-shadow);
   color: var(--dshcn-bubble-ink);
-  animation: dshcn-bubble-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  transition: border-color 240ms ease;
 }
-.dshcn-bubble[data-side="right"] .dshcn-bubble-pill { animation-name: dshcn-bubble-in-right; }
 .dshcn-bubble-pill[data-tone="working"] { border-color: rgba(190, 215, 240, 0.34); }
 .dshcn-bubble-pill[data-tone="success"] {
   --dshcn-bubble-accent: #047857;
@@ -759,23 +767,64 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 .dshcn-bubble-pill[data-tone="success"] .dshcn-bubble-icon { background: rgba(4, 120, 87, 0.1); }
-.dshcn-bubble-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* 离屏测量：nowrap 量文本宽（max-content 不受父宽限制），固定宽度量换行高度。
+   不要用 position:fixed + 负 left：WKWebView 的 shrink-to-fit 会给出过窄的宽度。 */
+.dshcn-bubble-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: none;
+  visibility: hidden;
+  pointer-events: none;
   font-size: 12px;
   font-weight: 650;
-  line-height: 1.35;
-  white-space: nowrap;
+  line-height: 16.2px;
+  white-space: pre;
+}
+.dshcn-bubble-measure[data-mode="wrap"] {
+  width: auto;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* 文案容器：高度 = 行数 × 16.2，由脚本按测量结果设置；两层文本叠在同一盒里做切换 */
+.dshcn-bubble-copy {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16.2px;
+  overflow: hidden;
+}
+.dshcn-bubble-text {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 16.2px;
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
 }
 .dshcn-bubble-check { display: block; width: 14px; height: 14px; }
 .dshcn-bubble-tail {
   position: absolute;
-  top: 50%;
+  top: 16.5px;
   width: 9px;
   height: 9px;
   background: var(--dshcn-bubble-bg);
-  transform: translateY(-50%) rotate(45deg);
+  transform: rotate(45deg);
+}
+/* 底边锚定：箭头改到距底 16.5px（几何中心距底 22px），仍对齐球心 */
+.dshcn-bubble[data-anchor="bottom"] .dshcn-bubble-tail {
+  top: auto;
+  bottom: 16.5px;
 }
 .dshcn-bubble[data-side="left"] .dshcn-bubble-tail {
   right: -5px;
@@ -803,10 +852,16 @@ body {
   position: absolute;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px;
+  padding-top: 8px;
   box-sizing: border-box;
   pointer-events: auto;
+}
+.dshcn-quick[data-anchor="bottom"] {
+  align-items: flex-end;
+  padding-top: 12px;
+  padding-bottom: 8px;
 }
 .dshcn-quick[data-side="left"] { justify-content: flex-end; }
 .dshcn-quick[data-side="right"] { justify-content: flex-start; }
@@ -826,9 +881,7 @@ body {
     var(--dshcn-bubble-bg);
   box-shadow: var(--dshcn-bubble-shadow);
   color: var(--dshcn-bubble-ink);
-  animation: dshcn-bubble-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
-.dshcn-quick[data-side="right"] .dshcn-quick-bar { animation-name: dshcn-bubble-in-right; }
 .dshcn-quick-bar:focus-within { border-color: rgba(190, 225, 255, 0.55); }
 .dshcn-quick[data-error="true"] .dshcn-quick-bar { border-color: rgba(255, 93, 93, 0.5); }
 .dshcn-quick-mark {

@@ -7,7 +7,9 @@
  *                     assistant reply renders → Escape closes; settings mounts,
  *                     loads config, saves workspaces.
  *   3. bubble.mjs   — jsdom on lib/window.js: snapshot/SSE activity text,
- *                     40-char `...` truncation, null fallback, success copy.
+ *                     120-char `...` truncation, null fallback, success copy.
+ *   4. quick.mjs    — jsdom on lib/window.js: idle hover opens the quick input,
+ *                     focus + no bubble underneath, close returns to empty.
  *
  * Optional runtime deps (react, react-dom, jsdom) are resolved from
  * `DSH_COMMANDER_HARNESS_MODULES` or from the package node_modules — they are
@@ -35,6 +37,7 @@ const scripts = [
   { name: 'smoke.mjs', args: [clientPath] },
   { name: 'interact.mjs', args: [clientPath] },
   { name: 'bubble.mjs', args: [] },
+  { name: 'quick.mjs', args: [] },
 ]
 let failed = 0
 for (const script of scripts) {
@@ -43,5 +46,5 @@ for (const script of scripts) {
   if (result.status !== 0) failed += 1
 }
 
-console.log(failed === 0 ? '\n[harness] PASS (smoke + interact + bubble)' : `\n[harness] FAIL (${failed} script(s))`)
+console.log(failed === 0 ? '\n[harness] PASS (smoke + interact + bubble + quick)' : `\n[harness] FAIL (${failed} script(s))`)
 process.exit(failed === 0 ? 0 : 1)

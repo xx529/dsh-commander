@@ -58,7 +58,7 @@ const snapshot = {
   tasks: [],
   pendingDispatch: null,
   workSessions: [],
-  messages: [],
+  messages: [{ messageId: 'm0', role: 'assistant', text: '已完成调研：billy-cli 支持三种鉴权方式', at: 1, order: 1 }],
   commanderBusy: true,
   commanderActivity: { text: '查看当前目录', at: 1 },
   lastTurnId: 2,
@@ -92,7 +92,11 @@ async function waitFor(predicate) {
   }
   return false
 }
-const text = () => window.document.querySelector('.dshcn-bubble-text')?.textContent ?? null
+const text = () => {
+  const nodes = [...window.document.querySelectorAll('.dshcn-bubble-text')]
+    .filter(node => node.dataset.leaving !== 'true')
+  return nodes.at(-1)?.textContent ?? null
+}
 const phase = () => window.document.querySelector('.dshcn-bubble')?.getAttribute('data-phase') ?? null
 function pushStatus(rev, payload) {
   const listener = window.__eventSource?.listeners.get('commander.status')
@@ -103,8 +107,8 @@ function pushStatus(rev, payload) {
 check('bubble page loads and shows snapshot activity', await waitFor(() => text() === '查看当前目录'), text())
 check('bubble is in working phase', phase() === 'working', phase())
 
-pushStatus(2, { busy: true, activity: { text: 'a'.repeat(50), at: 2 } })
-check('SSE activity truncates to 40 chars + ...', await waitFor(() => text() === `${'a'.repeat(40)}...`), text())
+pushStatus(2, { busy: true, activity: { text: 'a'.repeat(130), at: 2 } })
+check('SSE activity truncates to 120 chars + ...', await waitFor(() => text() === `${'a'.repeat(120)}...`), text())
 
 pushStatus(3, { busy: true, activity: null })
 check('null activity falls back to thinking', await waitFor(() => text() === '正在思考'), text())
@@ -113,7 +117,11 @@ pushStatus(4, { busy: true, activity: { text: '运行测试', at: 4 } })
 check('SSE activity replaces the bubble text', await waitFor(() => text() === '运行测试'), text())
 
 pushStatus(5, { busy: false, activity: null })
-check('turn end switches to the success copy', await waitFor(() => phase() === 'success' && text() === '已完成 · 点击球查看'), `${phase()} / ${text()}`)
+check(
+  'turn end shows the last assistant reply with success chrome',
+  await waitFor(() => phase() === 'success' && text() === '已完成调研：billy-cli 支持三种鉴权方式'),
+  `${phase()} / ${text()}`,
+)
 
 window.close()
 const failed = results.filter(result => !result.ok)

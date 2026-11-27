@@ -63,3 +63,6 @@ __pycache__/
 /packages/dsh-commander/native/dist/
 /target/
 /packages/dsh-commander/native/tauri/gen/
+
+# 一次性动效原型（结论已落到 v0.6 实现与 docs/validation/native-bubble-multiline.md）
+/prototype/bubble-transitions/

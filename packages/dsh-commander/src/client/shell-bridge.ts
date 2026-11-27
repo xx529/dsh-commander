@@ -23,6 +23,7 @@ export interface NativeShellBridge {
   onModeChange(listener: (panel: boolean) => void): () => void
   /** 气泡窗在球左侧/右侧的翻转通知。 */
   onBubbleSide(listener: (side: 'left' | 'right') => void): () => void
+  onBubbleAnchor(listener: (anchor: 'top' | 'bottom') => void): () => void
   /** 原生轮询到的球悬停状态（不依赖窗口焦点）。 */
   onBallHover(listener: (hovered: boolean) => void): () => void
   /** 原生 1.5s 停留后唤起/收起快捷输入。 */
@@ -109,6 +110,24 @@ export function getShellBridge(): NativeShellBridge {
       void tauri.event
         .listen<boolean>('commander:mode', (event) => {
           listener(event.payload === true)
+        })
+        .then((fn) => {
+          if (disposed) fn()
+          else unlisten = fn
+        })
+        .catch(() => {})
+      return () => {
+        disposed = true
+        unlisten?.()
+      }
+    },
+    onBubbleAnchor(listener) {
+      if (!available || tauri?.event === undefined) return () => {}
+      let unlisten: (() => void) | undefined
+      let disposed = false
+      void tauri.event
+        .listen<string>('commander:bubble-anchor', (event) => {
+          listener(event.payload === 'bottom' ? 'bottom' : 'top')
         })
         .then((fn) => {
           if (disposed) fn()

@@ -446,7 +446,7 @@ test('dependencyEdgePath connects the nearest pair of edges instead of the left-
   const pendingTop = { left: 40, right: 257, top: 38, bottom: 239 }
   const pendingBottom = { left: 40, right: 257, top: 248, bottom: 449 }
   const running = { left: 572, right: 815, top: 38, bottom: 159 }
-  // 同一列纵排：从下卡顶边垂直连到上卡底边，不再绕到左/右侧边的正中。
+  // 同一列纵排：从下卡顶边中点垂直连到上卡底边中点，不再绕到左/右侧边的正中。
   assert.equal(
     dependencyEdgePath(pendingBottom, pendingTop),
     'M 148.5 248 C 148.5 238, 148.5 249, 148.5 239',
@@ -455,16 +455,36 @@ test('dependencyEdgePath connects the nearest pair of edges instead of the left-
     dependencyEdgePath(pendingTop, pendingBottom),
     'M 148.5 239 C 148.5 249, 148.5 238, 148.5 248',
   )
-  // 跨列：从运行中卡的左边（对准目标卡中心、夹在转角内）连到左侧目标卡的右边。
+  // 跨列：从运行中卡左边的**中点**连到左侧目标卡右边的**中点**。
   assert.equal(
     dependencyEdgePath(running, pendingBottom),
-    'M 572 147 C 439.7 147, 389.3 260, 257 260',
+    'M 572 98.5 C 439.7 98.5, 389.3 348.5, 257 348.5',
   )
-  // 跨列、目标在上：两边各取相近的一侧，而不是都钉在竖直中心。
+  // 跨列、目标在上：两端仍然是各自边的中点，不是投影到对端中心。
   assert.equal(
     dependencyEdgePath(pendingTop, running),
-    'M 257 98.5 C 389.3 98.5, 439.7 138.5, 572 138.5',
+    'M 257 138.5 C 389.3 138.5, 439.7 98.5, 572 98.5',
   )
+})
+
+
+test('dependencyEdgePath anchors every edge on its own side midpoint (fan-in converges)', () => {
+  // 2026-11-27 反馈几何：运行中三张卡都依赖待派发的同一张卡。
+  const target = { left: 40, right: 257, top: 137, bottom: 286 }
+  const sources = [
+    { left: 572, right: 815, top: 137, bottom: 212 },
+    { left: 572, right: 815, top: 221, bottom: 318 },
+    { left: 572, right: 815, top: 347, bottom: 455 },
+  ]
+  const ends = sources.map((from) => dependencyEdgePath(from, target).split(' ').slice(-2).join(' '))
+  // 同一个目标卡：三条线落在同一个点（右边中点 211.5），不再有 274/274/... 的错位箭头。
+  assert.deepEqual(ends, ['257 211.5', '257 211.5', '257 211.5'])
+  // 每条线都从自己卡片的左边中点出发（不再被 12px 内缩推到接近角落）。
+  const starts = sources.map((from) => {
+    const [x, y] = dependencyEdgePath(from, target).replace('M ', '').split(' C ')[0]?.split(' ') ?? []
+    return `${x ?? ''} ${y ?? ''}`
+  })
+  assert.deepEqual(starts, ['572 174.5', '572 269.5', '572 401'])
 })
 
 
@@ -474,13 +494,13 @@ test('dependencyEdgePath never anchors on a card corner and never emits NaN', ()
   const tall = { left: 200, right: 300, top: 300, bottom: 420 }
   const d = dependencyEdgePath(flat, tall)
   assert.doesNotMatch(d, /NaN|Infinity/)
-  assert.equal(d, 'M 100 5 C 142 5, 158 312, 200 312')
-  // 反向依赖（目标在左侧）：从右边卡片的左边出发，进入左边卡片的右边。
+  assert.equal(d, 'M 100 5 C 142 5, 158 360, 200 360')
+  // 反向依赖（目标在左侧）：从右边卡片的左边中点出发，进入左边卡片的右边中点。
   const left = { left: 40, right: 257, top: 38, bottom: 239 }
   const right = { left: 572, right: 815, top: 38, bottom: 159 }
   assert.equal(
     dependencyEdgePath(right, left),
-    'M 572 138.5 C 439.7 138.5, 389.3 98.5, 257 98.5',
+    'M 572 98.5 C 439.7 98.5, 389.3 138.5, 257 138.5',
   )
 })
 

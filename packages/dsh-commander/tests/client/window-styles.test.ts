@@ -199,7 +199,7 @@ test('quick input reuses the bubble window and receives pointer events', () => {
   assert.match(block(css, '.dshcn-quick-input'), /outline:\s*none;/u)
 })
 
-test('bubble window fits 336×76 with a 12px shadow/tail margin', () => {
+test('bubble window fits 336×124 (5 rows) with a 12px shadow/tail margin', () => {
   const css = WINDOW_STYLES
   const bubble = block(css, '.dshcn-bubble,\n.dshcn-quick')
   assert.match(bubble, /position:\s*absolute;/u)
@@ -211,7 +211,7 @@ test('bubble window fits 336×76 with a 12px shadow/tail margin', () => {
   assert.match(pill, /min-height:\s*44px;/u)
   const size = bubbleWindowSize()
   assert.equal(size.width, 336)
-  assert.equal(size.height, 76)
+  assert.equal(size.height, 124)
   assert.equal(312 + 12 * 2, size.width)
   // 阴影 0 3px 9px 的最远 reach = 12px，正好落在 padding 内。
   const shadow = /--dshcn-bubble-shadow:\s*0 ([-\d.]+)px ([-\d.]+)px/gu.exec(css)
@@ -220,10 +220,32 @@ test('bubble window fits 336×76 with a 12px shadow/tail margin', () => {
   assert.ok(reach <= 12, `bubble shadow reach ${reach}px exceeds 12px padding`)
 })
 
-test('bubble activity text truncates inside the 312px pill', () => {
+test('bubble text wraps into at most 5 rows inside the 312px pill', () => {
   const text = block(WINDOW_STYLES, '.dshcn-bubble-text')
-  assert.match(text, /white-space:\s*nowrap;/u)
-  assert.match(text, /min-width:\s*0;/u)
+  assert.match(text, /white-space:\s*normal;/u)
+  assert.match(text, /line-height:\s*16\.2px;/u)
+  assert.match(text, /-webkit-line-clamp:\s*5;/u)
+  assert.match(text, /text-align:\s*left;/u)
   assert.match(text, /overflow:\s*hidden;/u)
-  assert.match(text, /text-overflow:\s*ellipsis;/u)
+  const copy = block(WINDOW_STYLES, '.dshcn-bubble-copy')
+  assert.match(copy, /position:\s*relative;/u)
+  assert.match(copy, /overflow:\s*hidden;/u)
+  assert.match(copy, /height:\s*16\.2px;/u)
+})
+
+test('bubble tail stays on the ball axis instead of following the height', () => {
+  const tail = block(WINDOW_STYLES, '.dshcn-bubble-tail')
+  assert.match(tail, /top:\s*16\.5px;/u)
+  assert.doesNotMatch(tail, /translateY\(-50%\)/u)
+  const bottomAnchor = block(WINDOW_STYLES, '.dshcn-bubble[data-anchor="bottom"] .dshcn-bubble-tail')
+  assert.match(bottomAnchor, /bottom:\s*16\.5px;/u)
+})
+
+test('bubble window anchors to the top by default and flips to the bottom near the screen edge', () => {
+  const bubble = block(WINDOW_STYLES, '.dshcn-bubble,\n.dshcn-quick')
+  assert.match(bubble, /align-items:\s*flex-start;/u)
+  const flipped = block(WINDOW_STYLES, '.dshcn-bubble[data-anchor="bottom"],\n.dshcn-quick[data-anchor="bottom"]')
+  assert.match(flipped, /align-items:\s*flex-end;/u)
+  const quick = block(WINDOW_STYLES, '.dshcn-quick')
+  assert.match(quick, /padding-top:\s*8px;/u)
 })
