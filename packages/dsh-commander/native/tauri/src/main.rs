@@ -337,6 +337,12 @@ fn create_window(app: &tauri::App, config: &Config) -> tauri::Result<()> {
         .resizable(false)
         .shadow(false)
         .focused(false)
+        // 球窗不参与键盘焦点：球是纯指针控件（点击/拖动/悬停），不需要键盘输入。
+        // 否则 show() 时 AppKit 会把球窗设为 key，WKWebView 的初始焦点落到球按钮上，
+        // 页面此时还没收到过指针输入 → 浏览器按「键盘焦点」处理，画出 :focus-visible 的
+        // 2px 蓝环（启动时那圈边框）；鼠标一进窗口焦点被别处拿走，环又消失。
+        // tao 的 canBecomeKeyWindow 直接读这个标志，所以球窗永远不会成为 key。
+        .focusable(false)
         .accept_first_mouse(true)
         .visible(false)
         .on_page_load(move |_webview, payload| {

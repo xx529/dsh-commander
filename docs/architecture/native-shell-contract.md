@@ -1,6 +1,6 @@
 # 原生壳浮窗契约（M4 / macOS 先行）
 
-> 版本：v0.6（2026-11-27）　状态：实现契约（P1 骨架；v0.2 球常驻 + 独立面板窗口；v0.3 Lite 状态气泡窗；v0.4 液态金属球 / 金属气泡 / 银白 working 卫星 / 快捷输入 / 悬停高亮 / 未读脉冲；v0.5 气泡展示当前活动：工具 description / assistant 文本；v0.6 气泡多行：336×124、最多 5 行、贴屏幕下方时向上长、输入框优先）
+> 版本：v0.7（2026-11-27）　状态：实现契约（P1 骨架；v0.2 球常驻 + 独立面板窗口；v0.3 Lite 状态气泡窗；v0.4 液态金属球 / 金属气泡 / 银白 working 卫星 / 快捷输入 / 悬停高亮 / 未读脉冲；v0.5 气泡展示当前活动：工具 description / assistant 文本；v0.6 气泡多行：336×124、最多 5 行、贴屏幕下方时向上长、输入框优先；v0.7 球窗不参与键盘焦点）
 > 上游需求：`docs/PRODUCT-DESIGN.md` §18 M4「原生壳、系统级悬浮、全局热键 → 任意应用可见」
 > 技术依据：`research/notes/float-tech.md` §5.2；`research/notes/dsh-capabilities.md` §1.4
 > 本文只描述**原生壳**这一层；`/commander/*` 既有数据面契约仍以 `docs/architecture/implementation-plan.md` §8 为准。
@@ -112,10 +112,11 @@ Host → 壳：
 
 ## 4. 窗口行为
 
-| 项 | P1 实现（v0.6 三窗口：球 76×76 / 面板 420×660 / 气泡 336×124） |
+| 项 | P1 实现（v0.7 三窗口：球 76×76 / 面板 420×660 / 气泡 336×124） |
 |---|---|
-| 窗口 | 球窗口 `main`（透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、76×76）；面板窗口 `panel`（透明、无边框、`skip_taskbar`、`resizable: true`、默认 `visible: false`，展开时 `always_on_top: false`）；气泡窗口 `bubble`（336×124、透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、默认 `visible: false`） |
+| 窗口 | 球窗口 `main`（透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、76×76、`focusable: false`）；面板窗口 `panel`（透明、无边框、`skip_taskbar`、`resizable: true`、默认 `visible: false`，展开时 `always_on_top: false`）；气泡窗口 `bubble`（336×124、透明、无边框、`always_on_top`、`skip_taskbar`、`resizable: false`、默认 `visible: false`） |
 | 激活策略 | macOS `Accessory`（无 Dock 图标、不抢焦点）；气泡窗 `set_ignore_cursor_events(true)`，点击穿透 |
+| 键盘焦点 | **球窗永不成为 key 窗口**（`focusable: false` → tao `canBecomeKeyWindow == false`）：球是纯指针控件（点击/拖动/悬停），不需要键盘输入，也不必抢走用户正在输入的焦点。副作用是球页不会再因「初始焦点 + 未发生指针输入」被浏览器判成键盘焦点，浏览器 `:focus-visible` 的 2px 蓝环不会出现在启动时。面板窗口与气泡窗（快捷输入）保持可聚焦，键盘交互（输入、Enter 发送、ESC 收起）走它们。 |
 | 悬浮球 | 76×76 窗口、60px 圆形（8px 透明边），**液态金属**：银蓝 chrome conic + 左上白色高光 + 近黑底部 + 银色定向 rim；不透明、无 backdrop；边缘 `mask 86/94` + `blur 2px` rim 光带，不再有 1px 白边；42px 冷核；无中心符号、无右下连接点；working 时**银白卫星**沿球缘环行（4.6s）；显示可操作数徽标；**面板打开时仍然常驻可见**，点击切换面板打开/收起。完成气泡收起后进入未读态：绿色脉冲核心 + 双层绿色声呐，直到点击浮球/打开面板清除。 |
 | 悬停高亮 | 原生每 80ms 在主线程读 `NSEvent.mouseLocation` 与球窗 `NSWindow.frame`，光标进入/离开球圆时发 `commander:ball-hover`（球页 + 气泡页）；球页面加 `is-hover`，气泡页用于「空输入 + 离开球」收起。不依赖窗口焦点，也不需要先点一下。 |
 | 快捷输入 | 光标在球内停留 0.8s → 复用 bubble 窗（336×124）：`set_ignore_cursor_events(false)`、show、set_focus，页面从状态气泡切到输入；与状态气泡同一套**烟熏铬玻璃**（银色描边、顶部金属反光、镀铬 `>` 与发送键）；输入条只有「> / 输入 / 发送」，无 placeholder、无关闭按钮；Enter 发送、Esc 收起；空输入时光标离开球自动收起，有内容则保留；发送走既有 `POST /commander/message`；收起后状态气泡恢复；光标离开球后才重新武装，避免原地反复弹；面板打开时关闭。 |
@@ -163,7 +164,7 @@ ACL：`build.rs` 的 `app_manifest.commands` 加入 `set_bubble`、`set_quick_in
 ### 5.2 审批桥（P1）
 
 - Host `src/host/native/approval-bridge.ts` 以 `{ prepend: true }` 监听 `approval/request`。
-- 接管条件：supervisor `phase === 'running' && visible && focused`；任一不满足直接 `next()`（DSH 页内审批卡照旧）。
+- 接管条件：supervisor `phase === 'running' && visible && focused`；任一不满足直接 `next()`（DSH 页内审批卡照旧）。`focused` 由壳上报：球窗不参与键盘焦点（v0.7 起恒为 false），因此实际等价于**面板窗口已打开且聚焦**——面板未打开时审批卡回落 DSH 主窗，避免出现「接管了却没人看得见」的悬挂。
 - 请求视图只含 `id/toolName/reason/at`（不含工具参数；与 DSH 的 `ApprovalRequest` 口径一致）。
 - 通道：SSE `native.approval`（新请求）/ `native.approval.resolved`（结算）；`GET /commander/native/approvals` 补拉；`POST /commander/native/approval/:id` 回答 `{outcome:'allowed-once'|'rejected'}`。
 - 超时 10 分钟 → `cancelled`；壳退出/心跳失败 → 所有未决 `cancelled`。
