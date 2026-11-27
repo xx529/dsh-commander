@@ -1,4 +1,5 @@
-// M1 模型工具定义与作用域安装：只在指挥官会话可见（register on agent ctx; 其它 agent restrict deny）。
+// M1 模型工具定义与作用域安装：在插件 ctx 全局注册（经 inject 的 tools 属性访问器，保住插件归属），
+// 再用 `when` 限定指挥官会话可见；不再按 agent 安装/restrict。
 // 工具 schema 照 ARCHITECTURE §4.1/§4.4；execute 返回结构化对象，失败返回 {ok:false,code,message}。
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
@@ -94,6 +95,33 @@ export interface ToolExecLike {
   agent?: ToolAgentLike
   session?: { id?: string }
   sessionId?: string
+}
+
+/** tools 服务最小面：只用到 register（形状照宿主 @deepseek-ai/dsh-tools 的 ToolsService）。 */
+export interface ToolServiceLike {
+  register?: (definition: unknown, options?: { when?: (context: { agent?: ToolAgentLike }) => boolean }) => (() => void) | undefined
+}
+
+/** 经 `ctx.get('tools')` 探活：只证明服务存在，不产生 cordis 的注册方身份信号。 */
+const probeToolsService = (ctx: CordisContext): ToolServiceLike | undefined => {
+  try {
+    return ctx.get('tools') as ToolServiceLike | undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 经属性访问取 tools（`ctx.tools`）。cordis 只在**属性访问**服务时发 `internal/get`（reader=访问方），
+ * 插件面板（dsh-context / capability-settings）靠这个信号认注册方；未 inject 的 ctx 会抛
+ * "cannot get property ... without inject"，按 undefined 处理并交给 inject 路径。
+ */
+const readToolsAccessor = (ctx: CordisContext): ToolServiceLike | undefined => {
+  try {
+    return (ctx as CordisContext & { tools?: ToolServiceLike }).tools
+  } catch {
+    return undefined
+  }
 }
 
 export interface CommanderToolsDeps {
@@ -1530,38 +1558,55 @@ export function createCommanderTools(deps: CommanderToolsDeps) {
       defineTool = await (deps.defineToolLoader ?? (() => loadDefineTool(anchor)))()
     },
     /**
-     * 在插件 apply 里注册一次：5 个工具进**全局** tools 表（归属=本插件，插件面板才能正确识别来源），
+     * 在插件 apply 里注册一次：10 个工具进**全局** tools 表（归属=本插件，插件面板才能正确识别来源），
      * 再用 `when` 把可见性/可调用性限定到当前指挥官会话（其它 agent 的 system prompt 看不到）。
+     *
+     * 注册必须经 `ctx.inject(['tools'], scoped => scoped.tools)` 的属性访问器：cordis 只在
+     * **属性访问服务**时发 `internal/get`（reader=访问方），插件面板（dsh-context / capability-settings）
+     * 靠这个信号认注册方；`ctx.get('tools')` 拿到的裸实例不发信号，归属就会回退到「最近一次读
+     * tools 的 fiber」，而 agent 作用域 fiber 的名字是 `scope`（@deepseek-ai/dsh-scope 的
+     * createScope 用一个名为 scope 的空插件挂 fiber）——工具于是被标成 `scope` 而不是本插件。
      * 返回 false 表示 tools 服务缺失或全部注册失败（调用方按诊断日志降级）。
      */
     install(): boolean {
-      let service: { register?: (definition: unknown, options?: { when?: (context: { agent?: ToolAgentLike }) => boolean }) => (() => void) | undefined } | undefined
-      try {
-        service = deps.ctx.get('tools') as typeof service
-      } catch {
-        service = undefined
-      }
+      const service = probeToolsService(deps.ctx)
       if (service?.register === undefined) {
         deps.onDiagnostic?.('[commander] tools service is unavailable; commander tools are not registered')
         return false
       }
       const specs = (toolsSpecs ??= safeBuildSpecs())
       if (specs === null) return false
-      let registeredCount = 0
-      for (const name of COMMANDER_TOOL_NAMES) {
-        try {
-          const dispose = service.register(specs[name], { when: commanderOnly })
-          if (typeof dispose === 'function') disposers.push(dispose)
-          registeredCount += 1
-        } catch (error) {
-          deps.onDiagnostic?.(`[commander] tool '${name}' registration failed: ${String((error as Error)?.message ?? error)}`)
+      const registerAll = (tools: ToolServiceLike): boolean => {
+        let registeredCount = 0
+        for (const name of COMMANDER_TOOL_NAMES) {
+          try {
+            const dispose = tools.register?.(specs[name], { when: commanderOnly })
+            if (typeof dispose === 'function') disposers.push(dispose)
+            registeredCount += 1
+          } catch (error) {
+            deps.onDiagnostic?.(`[commander] tool '${name}' registration failed: ${String((error as Error)?.message ?? error)}`)
+          }
         }
+        if (registeredCount === 0) {
+          deps.onDiagnostic?.('[commander] no commander tool could be registered')
+          return false
+        }
+        return true
       }
-      if (registeredCount === 0) {
-        deps.onDiagnostic?.('[commander] no commander tool could be registered')
-        return false
+      // 宿主已把 tools 注入本 ctx（插件声明过 inject）时，属性访问可用，直接走带身份的访问器。
+      const accessed = readToolsAccessor(deps.ctx)
+      if (accessed?.register !== undefined) return registerAll(accessed)
+      const inject = deps.ctx.inject?.bind(deps.ctx)
+      if (inject !== undefined) {
+        // 等 tools 就绪；已就绪时 cordis 同步回调（宿主现状），注册语义与旧路径一致。
+        inject(['tools'], (scoped) => {
+          registerAll(readToolsAccessor(scoped) ?? service)
+        })
+        // tools 已探活存在：即便回调延后，也不该按“服务缺失”告警。
+        return true
       }
-      return true
+      // 旧宿主没有 inject：退回裸实例注册（归属信号缺失，但工具仍可用）。
+      return registerAll(service)
     },
     specs(): Record<CommanderToolName, unknown> | null {
       toolsSpecs ??= safeBuildSpecs()

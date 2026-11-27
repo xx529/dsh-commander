@@ -197,7 +197,7 @@ export function apply(ctx, config) { … }
 
 只声明本插件实际用到的形状（避免 import DSH 包）：
 
-- `CordisContext`：`get(name, strict?)`、`on(event, listener)`、`effect(fn)`、`logger`。
+- `CordisContext`：`get(name, strict?)`、`on(event, listener)`、`effect(fn)`、`inject?(names, cb)`（等软依赖就绪）、`logger`。
 - `SessionController`：`create(req)`、`selectModel(req)`、`prompt(req, signal?)`、`cancel(req)`。
 - `StorageDomain`：`open(spec)` → `Domain`；`Domain.table(name)` → `{ get/entries/keys/put/update/delete/deleteMany/size }`。
 - `Session`：`id`、`header`、`seq`、`events`、`eventAt(seq)`。
@@ -205,6 +205,11 @@ export function apply(ctx, config) { … }
 - `SessionProjections`：`snapshot(session)`（读 `userQuestions` 视图）。
 - `WebServer`：`register({ kind, path, handler })`。
 - `Tools`：`register(definition, { when })`（**全局**注册 + step 级 `when` 限定；注册到 agent 作用域会丢失插件归属）。
+  必须经 `ctx.inject(['tools'], scoped => scoped.tools.register(...))` 的**属性访问器**注册：cordis 只在属性
+  访问服务时发 `internal/get`（reader=访问方），插件面板（dsh-context / capability-settings）据此认注册方；
+  `ctx.get('tools')` 的裸实例不发信号，归属会回退到「最近一次读 tools 的 fiber」——agent 作用域 fiber 名是
+  `scope`（`@deepseek-ai/dsh-scope` 的 `createScope` 用名为 `scope` 的空插件挂 fiber），于是 commander 的
+  工具被标成 `scope`。
 - `CapabilityPanel`：thunk 或对象形态 + `jev.{getConfig,rank,apply}`。
 
 ### 3.3 模块依赖方向（禁止反向依赖）

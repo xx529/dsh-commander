@@ -44,6 +44,35 @@ test('when 只放行当前指挥官会话（绑定后动态生效）', async () 
   assert.equal(when({ agent: { id: 'session-worker' } }), false)
 })
 
+// 回归：归属信号来自 cordis 的 `internal/get`，只有**属性访问**服务才会发（reader=访问方）。
+// 若用 ctx.get('tools') 的裸实例注册，插件面板只能回退到「最近读 tools 的 fiber」，
+// 而 agent 作用域 fiber 名是 `scope`（@deepseek-ai/dsh-scope createScope），工具被标成 scope。
+test('注册经 inject 的 scoped tools 访问器（保住插件归属，不落裸实例）', async () => {
+  const raw = createFakeTools()
+  const traced = createFakeTools()
+  const injectCalls: string[][] = []
+  const ctx = createFakeCtx({
+    services: {
+      storageDomain: createFakeStorageDomain(),
+      webServer: createFakeWebServer(),
+      sessionController: createFakeSessionController(),
+      workspaceRegistry: createFakeWorkspaceRegistry([{ id: 'ws-a', name: 'A', path: '/tmp/a', sessionIds: [] }]),
+      agents: { list: () => [] },
+      tools: raw,
+    },
+    inject(names, callback) {
+      injectCalls.push([...names])
+      // 真宿主里 `scoped.tools` 的属性访问才触发 internal/get；fake 用独立实例代表 traced 视图。
+      if (names.includes('tools')) callback(Object.assign(createFakeCtx({ services: { tools: traced } }), { tools: traced }))
+      return () => undefined
+    },
+  })
+  await apply(ctx)
+  assert.ok(injectCalls.some((names) => names.includes('tools')), '应先等 tools 就绪，再经 inject 回调注册')
+  assert.equal(traced.registered.length, 10, '10 个工具都必须注册在带身份的 scoped 访问器上')
+  assert.equal(raw.registered.length, 0, 'ctx.get 的裸实例不得注册（否则插件面板认不出来源）')
+})
+
 test('tools 服务缺失时不阻塞插件装配（降级为无工具）', async () => {
   const { webServer } = await setup({ withTools: false })
   const health = await webServer.invoke('GET', '/commander/health')

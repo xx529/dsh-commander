@@ -18,6 +18,11 @@ import type {
 // ---------------------------------------------------------------- FakeCtx
 export interface FakeCtxOptions {
   services?: Record<string, unknown>
+  /**
+   * 可选：模拟 cordis `inject`（等服务就绪再执行）。回调参数是“已注入服务的 scoped ctx”：
+   * 真实宿主里它的属性访问（`scoped.tools`）才会触发 cordis 的 `internal/get` 归属信号。
+   */
+  inject?: (names: string[], callback: (scoped: FakeCtx) => void) => DisposableLike | void
   logger?: {
     info?: (...args: unknown[]) => void
     warn?: (...args: unknown[]) => void
@@ -61,6 +66,7 @@ export function createFakeCtx(options: FakeCtxOptions = {}): FakeCtx {
         if (typeof dispose === 'function') dispose()
       }
     },
+    ...(options.inject !== undefined ? { inject: options.inject } : {}),
     ...(options.logger !== undefined ? { logger: options.logger } : {}),
     emit(event: string, ...args: unknown[]) {
       for (const listener of listeners.get(event) ?? []) listener(...args)
